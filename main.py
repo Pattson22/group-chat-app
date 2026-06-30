@@ -3,9 +3,15 @@ from fastapi.responses import HTMLResponse
 from typing import Dict, List
 import sqlite3
 import json
+import time
+from collections import deque
 from datetime import datetime
 
 app = FastAPI()
+
+# --- RATE LIMITING ---
+RATE_LIMIT_MESSAGES = 5
+RATE_LIMIT_WINDOW_SECONDS = 3.0
 
 # --- DATABASE SETUP ---
 def init_db():
@@ -104,29 +110,38 @@ html = """
                 document.getElementById("current-room").textContent = roomName;
 
                 ws = new WebSocket(`ws://${location.host}/ws/${roomName}/${userName}`);
-                
+
+                function escapeHtml(str) {
+                    var div = document.createElement('div');
+                    div.textContent = str;
+                    return div.innerHTML;
+                }
+
                 ws.onmessage = function(event) {
                     var messages = document.getElementById('messages');
                     var wrapper = document.createElement('li');
                     wrapper.className = "msg-wrapper";
-                    
+
                     // Parse the incoming JSON data
                     var data = JSON.parse(event.data);
-                    
+                    var safeText = escapeHtml(data.text);
+                    var safeTime = escapeHtml(data.time);
+
                     if (data.type === "system") {
                         wrapper.classList.add("system");
-                        wrapper.innerHTML = `<span class="system-text">${data.text}</span>`;
+                        wrapper.innerHTML = `<span class="system-text">${safeText}</span>`;
                     } else {
                         var bubble = document.createElement('div');
                         bubble.className = "msg-bubble";
-                        
+
                         // Check if the message is from the current user
                         if (data.name === userName && data.type !== "history") {
                             bubble.classList.add("self");
-                            bubble.innerHTML = `<div>${data.text}</div><div class="msg-time">${data.time}</div>`;
+                            bubble.innerHTML = `<div>${safeText}</div><div class="msg-time">${safeTime}</div>`;
                         } else {
-                            var displayName = data.type === "history" ? data.name + " (Saved)" : data.name;
-                            bubble.innerHTML = `<div class="msg-sender">${displayName}</div><div>${data.text}</div><div class="msg-time">${data.time}</div>`;
+                            var safeName = escapeHtml(data.name);
+                            var displayName = data.type === "history" ? safeName + " (Saved)" : safeName;
+                            bubble.innerHTML = `<div class="msg-sender">${displayName}</div><div>${safeText}</div><div class="msg-time">${safeTime}</div>`;
                         }
                         wrapper.appendChild(bubble);
                     }
@@ -174,9 +189,16 @@ class ConnectionManager:
         await websocket.send_text(message)
 
     async def broadcast(self, message: str, room_name: str):
-        if room_name in self.active_connections:
-            for connection in self.active_connections[room_name]:
+        if room_name not in self.active_connections:
+            return
+        dead_connections = []
+        for connection in self.active_connections[room_name]:
+            try:
                 await connection.send_text(message)
+            except Exception:
+                dead_connections.append(connection)
+        for connection in dead_connections:
+            self.disconnect(connection, room_name)
 
 manager = ConnectionManager()
 
@@ -205,13 +227,27 @@ async def websocket_endpoint(websocket: WebSocket, room_name: str, client_name: 
     # 2. Announce new user using JSON
     system_msg = json.dumps({"type": "system", "text": f"⚡ {client_name} joined the room"})
     await manager.broadcast(system_msg, room_name)
-    
+
+    message_times = deque()
+
     try:
         while True:
             data = await websocket.receive_text()
+
+            # Rate limit: drop messages once a client exceeds
+            # RATE_LIMIT_MESSAGES within RATE_LIMIT_WINDOW_SECONDS.
+            send_time = time.monotonic()
+            while message_times and send_time - message_times[0] > RATE_LIMIT_WINDOW_SECONDS:
+                message_times.popleft()
+            if len(message_times) >= RATE_LIMIT_MESSAGES:
+                warning = json.dumps({"type": "system", "text": "You're sending messages too fast. Please slow down."})
+                await manager.send_personal_message(warning, websocket)
+                continue
+            message_times.append(send_time)
+
             # Get current time
             now = datetime.now().strftime("%I:%M %p")
-            
+
             # 3. Save to database with timestamp
             conn = sqlite3.connect('chat.db')
             cursor = conn.cursor()
