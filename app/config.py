@@ -3,7 +3,6 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/group_chat"
-    sqlite_path: str = "chat.db"
     rate_limit_messages: int = 5
     rate_limit_window_seconds: float = 3.0
 
@@ -24,6 +23,16 @@ class Settings(BaseSettings):
     twilio_account_sid: str | None = None
     twilio_auth_token: str | None = None
     twilio_verify_service_sid: str | None = None
+
+    # Media storage
+    storage_backend: str = "local"  # "local" | "s3"
+    media_upload_dir: str = "media_uploads"
+    media_max_size_bytes: int = 10 * 1024 * 1024  # 10 MB
+
+    # S3 storage (only required when storage_backend == "s3")
+    s3_bucket: str | None = None
+    s3_region: str | None = None
+    s3_endpoint_url: str | None = None  # set for S3-compatible providers (R2, B2, MinIO)
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

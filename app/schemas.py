@@ -85,6 +85,7 @@ class MessageOut(BaseModel):
     sender_id: uuid.UUID
     type: str
     body: str | None = None
+    media_id: uuid.UUID | None = None
     created_at: datetime
     edited_at: datetime | None = None
     deleted_at: datetime | None = None
@@ -96,3 +97,12 @@ class MessagePage(BaseModel):
     items: list[MessageOut]
     has_more: bool
     next_cursor: int | None = None
+
+
+class MediaOut(BaseModel):
+    id: uuid.UUID
+    content_type: str
+    size_bytes: int
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)

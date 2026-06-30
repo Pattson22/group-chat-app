@@ -62,6 +62,18 @@ class Conversation(Base):
     last_message_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class Media(Base):
+    __tablename__ = "media"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    uploader_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    storage_backend: Mapped[str] = mapped_column(String, nullable=False)
+    storage_key: Mapped[str] = mapped_column(String, nullable=False)
+    content_type: Mapped[str] = mapped_column(String, nullable=False)
+    size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class Message(Base):
     __tablename__ = "messages"
     __table_args__ = (Index("ix_messages_conversation_id_created_at", "conversation_id", "created_at"),)
@@ -71,10 +83,11 @@ class Message(Base):
         UUID(as_uuid=True), ForeignKey("conversations.id"), nullable=False
     )
     sender_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
-    # "image"/"file" types are added in the media-upload phase once a media
-    # table exists for them to reference -- text/system only for now.
-    type: Mapped[str] = mapped_column(Enum("text", "system", name="message_type"), nullable=False, default="text")
+    type: Mapped[str] = mapped_column(
+        Enum("text", "system", "image", "file", name="message_type"), nullable=False, default="text"
+    )
     body: Mapped[str | None] = mapped_column(String, nullable=True)
+    media_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("media.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     edited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
