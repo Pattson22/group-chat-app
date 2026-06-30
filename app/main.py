@@ -11,10 +11,14 @@ from fastapi.staticfiles import StaticFiles
 
 from app.auth.routes import router as auth_router
 from app.config import settings
+from app.conversations.routes import router as conversations_router
+from app.messages.routes import router as messages_router
 from app.realtime.manager import ConnectionManager
 
 app = FastAPI()
 app.include_router(auth_router)
+app.include_router(conversations_router)
+app.include_router(messages_router)
 
 FRONTEND_DIR = Path(__file__).parent / "frontend"
 app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
