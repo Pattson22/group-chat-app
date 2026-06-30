@@ -9,10 +9,12 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from app.auth.routes import router as auth_router
 from app.config import settings
 from app.realtime.manager import ConnectionManager
 
 app = FastAPI()
+app.include_router(auth_router)
 
 FRONTEND_DIR = Path(__file__).parent / "frontend"
 app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
