@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import BigInteger, DateTime, Enum, ForeignKey, Index, String
+from sqlalchemy import BigInteger, Boolean, DateTime, Enum, ForeignKey, Index, Integer, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.sql import func
@@ -99,10 +99,16 @@ class Message(Base):
     )
     sender_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     type: Mapped[str] = mapped_column(
-        Enum("text", "system", "image", "file", name="message_type"), nullable=False, default="text"
+        Enum("text", "system", "image", "file", "call", name="message_type"), nullable=False, default="text"
     )
     body: Mapped[str | None] = mapped_column(String, nullable=True)
     media_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("media.id"), nullable=True)
+    # Only set for type == "call": outcome of a call logged into this
+    # conversation. "missed" means nobody but the caller ever joined;
+    # "completed" means at least one other participant joined at some point.
+    call_outcome: Mapped[str | None] = mapped_column(Enum("missed", "completed", name="call_outcome"), nullable=True)
+    call_video: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    call_duration_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     edited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

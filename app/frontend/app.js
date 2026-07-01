@@ -18,6 +18,37 @@ function isViewVisible(id) {
     return document.getElementById(id).hidden === false;
 }
 
+// --- small UI helpers: loading buttons, error shake, skeletons ---
+
+function setLoading(button, isLoading) {
+    button.disabled = isLoading;
+    button.classList.toggle('is-loading', isLoading);
+}
+
+function showError(errorEl, message, inputEl) {
+    errorEl.textContent = message;
+    restartAnimation(errorEl, 'shake');
+    if (inputEl) restartAnimation(inputEl, 'shake');
+}
+
+function restartAnimation(el, className) {
+    el.classList.remove(className);
+    // Force a reflow so re-adding the class restarts the CSS animation
+    // even if it was already applied moments ago.
+    void el.offsetWidth;
+    el.classList.add(className);
+}
+
+function renderSkeletonRows(container, count) {
+    container.innerHTML = '';
+    for (let i = 0; i < count; i++) {
+        const row = document.createElement('li');
+        row.className = 'skeleton skeleton-row';
+        row.style.animationDelay = `${i * 60}ms`;
+        container.appendChild(row);
+    }
+}
+
 // --- session persistence ---
 
 function saveSession() {
@@ -78,88 +109,109 @@ async function apiJson(path, method, body) {
 
 let pendingPhone = '';
 
-document.getElementById('sendCodeBtn').addEventListener('click', async () => {
-    const phone = document.getElementById('phoneInput').value.trim();
+document.getElementById('sendCodeBtn').addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    const phoneInput = document.getElementById('phoneInput');
+    const phone = phoneInput.value.trim();
     const errorEl = document.getElementById('phoneError');
     errorEl.textContent = '';
     if (!phone) {
-        errorEl.textContent = 'Enter a phone number.';
+        showError(errorEl, 'Enter a phone number.', phoneInput);
         return;
     }
 
-    const resp = await fetch('/auth/request-otp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone_number: phone }),
-    });
-    const data = await resp.json().catch(() => ({}));
-    if (!resp.ok) {
-        errorEl.textContent = data.detail || 'Failed to send code.';
-        return;
-    }
+    setLoading(btn, true);
+    try {
+        const resp = await fetch('/auth/request-otp', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ phone_number: phone }),
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok) {
+            showError(errorEl, data.detail || 'Failed to send code.', phoneInput);
+            return;
+        }
 
-    pendingPhone = phone;
-    document.getElementById('otpPhoneLabel').textContent = phone;
-    const hint = document.getElementById('devCodeHint');
-    if (data.dev_otp_code) {
-        hint.hidden = false;
-        hint.textContent = `Dev mode: your code is ${data.dev_otp_code}`;
-    } else {
-        hint.hidden = true;
+        pendingPhone = phone;
+        document.getElementById('otpPhoneLabel').textContent = phone;
+        const hint = document.getElementById('devCodeHint');
+        if (data.dev_otp_code) {
+            hint.hidden = false;
+            hint.textContent = `Dev mode: your code is ${data.dev_otp_code}`;
+        } else {
+            hint.hidden = true;
+        }
+        document.getElementById('otpInput').value = '';
+        document.getElementById('otpError').textContent = '';
+        showView('view-otp');
+    } finally {
+        setLoading(btn, false);
     }
-    document.getElementById('otpInput').value = '';
-    document.getElementById('otpError').textContent = '';
-    showView('view-otp');
 });
 
 document.getElementById('backToPhoneBtn').addEventListener('click', () => {
     showView('view-phone');
 });
 
-document.getElementById('verifyCodeBtn').addEventListener('click', async () => {
-    const code = document.getElementById('otpInput').value.trim();
+document.getElementById('verifyCodeBtn').addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    const codeInput = document.getElementById('otpInput');
+    const code = codeInput.value.trim();
     const errorEl = document.getElementById('otpError');
     errorEl.textContent = '';
     if (!code) {
-        errorEl.textContent = 'Enter the code.';
+        showError(errorEl, 'Enter the code.', codeInput);
         return;
     }
 
-    const resp = await fetch('/auth/verify-otp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone_number: pendingPhone, code }),
-    });
-    const data = await resp.json().catch(() => ({}));
-    if (!resp.ok) {
-        errorEl.textContent = data.detail || 'Invalid code.';
-        return;
-    }
+    setLoading(btn, true);
+    try {
+        const resp = await fetch('/auth/verify-otp', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ phone_number: pendingPhone, code }),
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok) {
+            showError(errorEl, data.detail || 'Invalid code.', codeInput);
+            return;
+        }
 
-    session = { accessToken: data.access_token, refreshToken: data.refresh_token, user: data.user };
-    saveSession();
-    await afterLogin();
+        session = { accessToken: data.access_token, refreshToken: data.refresh_token, user: data.user };
+        saveSession();
+        await afterLogin();
+    } finally {
+        setLoading(btn, false);
+    }
 });
 
-document.getElementById('saveProfileBtn').addEventListener('click', async () => {
-    const name = document.getElementById('displayNameInput').value.trim();
+document.getElementById('saveProfileBtn').addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    const nameInput = document.getElementById('displayNameInput');
+    const name = nameInput.value.trim();
     const errorEl = document.getElementById('profileError');
     errorEl.textContent = '';
     if (!name) {
-        errorEl.textContent = 'Enter a name.';
+        showError(errorEl, 'Enter a name.', nameInput);
         return;
     }
 
-    const resp = await apiJson('/auth/me', 'PATCH', { display_name: name });
-    const data = await resp.json().catch(() => ({}));
-    if (!resp.ok) {
-        errorEl.textContent = data.detail || 'Failed to save name.';
-        return;
-    }
+    setLoading(btn, true);
+    try {
+        const resp = await apiJson('/auth/me', 'PATCH', { display_name: name });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok) {
+            showError(errorEl, data.detail || 'Failed to save name.', nameInput);
+            return;
+        }
 
-    session.user = data;
-    saveSession();
-    await enterInbox();
+        session.user = data;
+        saveSession();
+        await enterInbox();
+    } finally {
+        setLoading(btn, false);
+    }
 });
 
 document.getElementById('logoutBtn').addEventListener('click', async () => {
@@ -207,6 +259,8 @@ function connectWs() {
             handleIncomingMessage(data.message);
         } else if (data.type === 'system') {
             handleSystemEvent(data.text);
+        } else if (data.type === 'call') {
+            handleCallEvent(data);
         }
     };
 
@@ -261,6 +315,7 @@ async function enterInbox() {
 }
 
 async function loadConversations() {
+    renderSkeletonRows(document.getElementById('conversationList'), 4);
     const resp = await apiFetch('/conversations');
     if (!resp.ok) return;
     conversations = await resp.json();
@@ -292,9 +347,10 @@ function renderConversationList() {
         return;
     }
 
-    for (const conv of conversations) {
+    conversations.forEach((conv, index) => {
         const li = document.createElement('li');
         li.className = 'conversation-item';
+        li.style.animationDelay = `${Math.min(index, 10) * 40}ms`;
 
         const nameDiv = document.createElement('div');
         nameDiv.className = 'conversation-name';
@@ -308,7 +364,7 @@ function renderConversationList() {
         li.appendChild(previewDiv);
         li.addEventListener('click', () => openConversation(conv));
         list.appendChild(li);
-    }
+    });
 }
 
 document.getElementById('newChatBtn').addEventListener('click', () => {
@@ -322,36 +378,43 @@ document.getElementById('newChatCancelBtn').addEventListener('click', () => {
     document.getElementById('newChatPanel').hidden = true;
 });
 
-document.getElementById('newChatSubmitBtn').addEventListener('click', async () => {
-    const phone = document.getElementById('newChatPhoneInput').value.trim();
+document.getElementById('newChatSubmitBtn').addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    const phoneInput = document.getElementById('newChatPhoneInput');
+    const phone = phoneInput.value.trim();
     const errorEl = document.getElementById('newChatError');
     errorEl.textContent = '';
     if (!phone) {
-        errorEl.textContent = 'Enter a phone number.';
+        showError(errorEl, 'Enter a phone number.', phoneInput);
         return;
     }
 
-    const lookupResp = await apiFetch(`/users/lookup?phone_number=${encodeURIComponent(phone)}`);
-    const lookupData = await lookupResp.json().catch(() => ({}));
-    if (!lookupResp.ok) {
-        errorEl.textContent = lookupData.detail || 'User not found.';
-        return;
-    }
-    if (lookupData.id === session.user.id) {
-        errorEl.textContent = "That's your own number.";
-        return;
-    }
+    setLoading(btn, true);
+    try {
+        const lookupResp = await apiFetch(`/users/lookup?phone_number=${encodeURIComponent(phone)}`);
+        const lookupData = await lookupResp.json().catch(() => ({}));
+        if (!lookupResp.ok) {
+            showError(errorEl, lookupData.detail || 'User not found.', phoneInput);
+            return;
+        }
+        if (lookupData.id === session.user.id) {
+            showError(errorEl, "That's your own number.", phoneInput);
+            return;
+        }
 
-    const dmResp = await apiJson('/conversations/dm', 'POST', { other_user_id: lookupData.id });
-    const dmData = await dmResp.json().catch(() => ({}));
-    if (!dmResp.ok) {
-        errorEl.textContent = dmData.detail || 'Failed to start chat.';
-        return;
-    }
+        const dmResp = await apiJson('/conversations/dm', 'POST', { other_user_id: lookupData.id });
+        const dmData = await dmResp.json().catch(() => ({}));
+        if (!dmResp.ok) {
+            showError(errorEl, dmData.detail || 'Failed to start chat.');
+            return;
+        }
 
-    document.getElementById('newChatPanel').hidden = true;
-    await loadConversations();
-    openConversation(dmData);
+        document.getElementById('newChatPanel').hidden = true;
+        await loadConversations();
+        openConversation(dmData);
+    } finally {
+        setLoading(btn, false);
+    }
 });
 
 document.getElementById('newGroupBtn').addEventListener('click', () => {
@@ -366,43 +429,50 @@ document.getElementById('newGroupCancelBtn').addEventListener('click', () => {
     document.getElementById('newGroupPanel').hidden = true;
 });
 
-document.getElementById('newGroupSubmitBtn').addEventListener('click', async () => {
-    const name = document.getElementById('newGroupNameInput').value.trim();
+document.getElementById('newGroupSubmitBtn').addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    const nameInput = document.getElementById('newGroupNameInput');
+    const name = nameInput.value.trim();
     const phonesRaw = document.getElementById('newGroupMembersInput').value.trim();
     const errorEl = document.getElementById('newGroupError');
     errorEl.textContent = '';
     if (!name) {
-        errorEl.textContent = 'Enter a group name.';
+        showError(errorEl, 'Enter a group name.', nameInput);
         return;
     }
 
-    const phones = phonesRaw
-        .split(',')
-        .map((p) => p.trim())
-        .filter(Boolean);
-    const memberIds = [];
-    for (const phone of phones) {
-        const lookupResp = await apiFetch(`/users/lookup?phone_number=${encodeURIComponent(phone)}`);
-        if (!lookupResp.ok) {
-            errorEl.textContent = `Could not find a user with phone ${phone}.`;
+    setLoading(btn, true);
+    try {
+        const phones = phonesRaw
+            .split(',')
+            .map((p) => p.trim())
+            .filter(Boolean);
+        const memberIds = [];
+        for (const phone of phones) {
+            const lookupResp = await apiFetch(`/users/lookup?phone_number=${encodeURIComponent(phone)}`);
+            if (!lookupResp.ok) {
+                showError(errorEl, `Could not find a user with phone ${phone}.`);
+                return;
+            }
+            const lookupData = await lookupResp.json();
+            if (lookupData.id !== session.user.id) {
+                memberIds.push(lookupData.id);
+            }
+        }
+
+        const resp = await apiJson('/conversations/group', 'POST', { name, member_ids: memberIds });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok) {
+            showError(errorEl, data.detail || 'Failed to create group.');
             return;
         }
-        const lookupData = await lookupResp.json();
-        if (lookupData.id !== session.user.id) {
-            memberIds.push(lookupData.id);
-        }
-    }
 
-    const resp = await apiJson('/conversations/group', 'POST', { name, member_ids: memberIds });
-    const data = await resp.json().catch(() => ({}));
-    if (!resp.ok) {
-        errorEl.textContent = data.detail || 'Failed to create group.';
-        return;
+        document.getElementById('newGroupPanel').hidden = true;
+        await loadConversations();
+        openConversation(data);
+    } finally {
+        setLoading(btn, false);
     }
-
-    document.getElementById('newGroupPanel').hidden = true;
-    await loadConversations();
-    openConversation(data);
 });
 
 // --- conversation view ---
@@ -412,9 +482,9 @@ async function openConversation(conv) {
     oldestLoadedMessageId = null;
     hasMoreOlder = false;
     document.getElementById('chatTitle').textContent = conversationDisplayName(conv);
-    document.getElementById('messages').innerHTML = '';
     document.getElementById('chatError').textContent = '';
     showView('view-chat');
+    renderSkeletonRows(document.getElementById('messages'), 5);
     await loadMessages();
 }
 
@@ -450,6 +520,7 @@ async function loadMessages(before) {
         list.prepend(fragment);
         container.scrollTop = container.scrollHeight - prevHeight;
     } else {
+        list.innerHTML = ''; // clear the loading skeleton
         list.appendChild(fragment);
         scrollToBottom();
     }
@@ -506,6 +577,8 @@ async function buildMessageElement(msg) {
 
     if (msg.type === 'image' || msg.type === 'file') {
         bubble.appendChild(await buildMediaElement(msg));
+    } else if (msg.type === 'call') {
+        bubble.appendChild(buildCallMessageElement(msg));
     } else {
         const textDiv = document.createElement('div');
         // textContent never interprets its argument as markup, so message
@@ -553,7 +626,10 @@ async function buildMediaElement(msg) {
     link.target = '_blank';
     link.rel = 'noopener noreferrer';
     link.className = 'msg-file-link';
-    link.textContent = '📄 Download attachment';
+    // Static, app-controlled markup (no user content interpolated here) --
+    // safe to build via innerHTML, unlike message bodies/names elsewhere.
+    link.innerHTML =
+        '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg> Download attachment';
     return link;
 }
 
@@ -575,24 +651,30 @@ document.getElementById('fileInput').addEventListener('change', async (e) => {
     e.target.value = '';
     if (!file || !currentConversation) return;
 
+    const attachBtn = document.getElementById('attachBtn');
     const errorEl = document.getElementById('chatError');
     errorEl.textContent = '';
 
     const formData = new FormData();
     formData.append('file', file);
 
-    const resp = await apiFetch('/media/upload', { method: 'POST', body: formData });
-    const data = await resp.json().catch(() => ({}));
-    if (!resp.ok) {
-        errorEl.textContent = data.detail || 'Upload failed.';
-        return;
-    }
+    setLoading(attachBtn, true);
+    try {
+        const resp = await apiFetch('/media/upload', { method: 'POST', body: formData });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok) {
+            showError(errorEl, data.detail || 'Upload failed.');
+            return;
+        }
 
-    if (!ws || ws.readyState !== WebSocket.OPEN) {
-        errorEl.textContent = 'Not connected, try again.';
-        return;
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
+            showError(errorEl, 'Not connected, try again.');
+            return;
+        }
+        ws.send(JSON.stringify({ conversation_id: currentConversation.id, media_id: data.id }));
+    } finally {
+        setLoading(attachBtn, false);
     }
-    ws.send(JSON.stringify({ conversation_id: currentConversation.id, media_id: data.id }));
 });
 
 // --- startup ---

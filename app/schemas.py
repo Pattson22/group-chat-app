@@ -90,6 +90,9 @@ class MessageOut(BaseModel):
     type: str
     body: str | None = None
     media_id: uuid.UUID | None = None
+    call_outcome: str | None = None
+    call_video: bool | None = None
+    call_duration_seconds: int | None = None
     created_at: datetime
     edited_at: datetime | None = None
     deleted_at: datetime | None = None

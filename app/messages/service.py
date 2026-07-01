@@ -13,11 +13,14 @@ async def create_message(
     body: str | None = None,
     type: str = "text",
     media_id: uuid.UUID | None = None,
+    call_outcome: str | None = None,
+    call_video: bool | None = None,
+    call_duration_seconds: int | None = None,
 ) -> Message:
     """Persists a message and bumps the conversation's inbox sort key.
 
-    Shared by the REST send endpoint, and the realtime websocket handler
-    for both text and media (image/file) messages.
+    Shared by the REST send endpoint, the realtime websocket handler for
+    text/media messages, and CallManager for call-outcome log entries.
     """
     now = datetime.now(timezone.utc)
     message = Message(
@@ -26,6 +29,9 @@ async def create_message(
         type=type,
         body=body,
         media_id=media_id,
+        call_outcome=call_outcome,
+        call_video=call_video,
+        call_duration_seconds=call_duration_seconds,
         created_at=now,
     )
     db.add(message)

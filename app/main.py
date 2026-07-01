@@ -20,6 +20,7 @@ from app.media.routes import router as media_router
 from app.messages.routes import router as messages_router
 from app.messages.service import create_message
 from app.models import Media
+from app.realtime.calls import CallManager
 from app.realtime.manager import ConnectionManager
 from app.schemas import MessageOut
 from app.users.routes import router as users_router
@@ -36,6 +37,7 @@ app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
 
 
 manager = ConnectionManager()
+call_manager = CallManager()
 
 
 # --- ROUTES ---
@@ -64,8 +66,22 @@ async def websocket_endpoint(websocket: WebSocket, db: AsyncSession = Depends(ge
 
             try:
                 payload = json.loads(raw)
+            except json.JSONDecodeError:
+                await manager.send_personal_message(
+                    json.dumps({"type": "system", "text": "Malformed message"}), websocket
+                )
+                continue
+
+            # Call signaling payloads have no conversation_id key, so this
+            # branch must run before the conversation_id parse below.
+            action = payload.get("action")
+            if isinstance(action, str) and action.startswith("call:"):
+                await call_manager.handle_call_action(action, payload, user, db, manager)
+                continue
+
+            try:
                 conversation_id = uuid.UUID(payload["conversation_id"])
-            except (json.JSONDecodeError, KeyError, ValueError, TypeError, AttributeError):
+            except (KeyError, ValueError, TypeError, AttributeError):
                 await manager.send_personal_message(
                     json.dumps({"type": "system", "text": "Malformed message"}), websocket
                 )
@@ -143,3 +159,4 @@ async def websocket_endpoint(websocket: WebSocket, db: AsyncSession = Depends(ge
 
     except WebSocketDisconnect:
         manager.disconnect(websocket, user.id)
+        await call_manager.handle_user_disconnected(user.id, db, manager)

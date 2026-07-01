@@ -24,6 +24,11 @@ class Settings(BaseSettings):
     # Messages
     message_max_length: int = 4000
 
+    # Calls -- mesh WebRTC (no SFU), so this cap keeps peer-connection count
+    # (N*(N-1)/2) and per-peer upload multiplication (N-1 streams) sane.
+    # A single constant so splitting audio/video caps later is a one-line change.
+    call_max_participants: int = 6
+
     # Twilio Verify (only required when otp_provider == "twilio")
     twilio_account_sid: str | None = None
     twilio_auth_token: str | None = None
