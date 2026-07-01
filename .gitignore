@@ -3,3 +3,5 @@ __pycache__/
 chat.db
 .env
 media_uploads/
+.pytest_cache/
+interface.jpg
