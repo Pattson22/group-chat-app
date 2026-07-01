@@ -58,7 +58,16 @@ def _prepare_test_database():
     db_module.async_session_factory = async_sessionmaker(db_module.engine, expire_on_commit=False)
 
     async def _create_schema():
+        # Recreate the schema from scratch every session so it always
+        # matches the *current* models.py exactly. Base.metadata.drop_all
+        # tries to drop each constraint by the name in metadata, which
+        # breaks the moment that name doesn't match what's actually in the
+        # database (e.g. a prior run's schema, before a column gained an
+        # explicit constraint name) -- DROP SCHEMA sidesteps that entirely
+        # by not caring what's in there.
         async with db_module.engine.begin() as conn:
+            await conn.execute(text("DROP SCHEMA public CASCADE"))
+            await conn.execute(text("CREATE SCHEMA public"))
             await conn.run_sync(Base.metadata.create_all)
 
     asyncio.run(_create_schema())
@@ -75,7 +84,11 @@ def _truncate_tables():
     import app.db as db_module
 
     async def _truncate():
-        table_names = ", ".join(f'"{t.name}"' for t in Base.metadata.sorted_tables)
+        # Order doesn't matter -- CASCADE handles the users<->media circular
+        # FK (avatar_media_id -> media, media.uploader_id -> users) in one
+        # statement, unlike Base.metadata.sorted_tables which can't
+        # topologically sort a genuine cycle.
+        table_names = ", ".join(f'"{t.name}"' for t in Base.metadata.tables.values())
         async with db_module.engine.begin() as conn:
             await conn.execute(text(f"TRUNCATE {table_names} RESTART IDENTITY CASCADE"))
 

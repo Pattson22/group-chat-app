@@ -17,13 +17,21 @@ async def get_media_for_user(
     """Authorizes access to a media item: the uploader can always fetch
     their own upload (e.g. to preview before sending it anywhere); anyone
     else needs to be a member of a conversation containing a message that
-    references it. 404 either way if neither holds, so existence isn't
-    leaked to outsiders."""
+    references it, *or* the media needs to currently be someone's profile
+    avatar (avatars are shown throughout the UI -- inbox list, chat header,
+    call tiles -- without a shared conversation message to authorize
+    against, so they're treated as visible to any authenticated user,
+    unlike message attachments). 404 either way if none of these hold, so
+    existence isn't leaked to outsiders."""
     media = await db.get(Media, media_id)
     if media is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Media not found")
 
     if media.uploader_id == current_user.id:
+        return media
+
+    is_avatar = await db.scalar(select(User.id).where(User.avatar_media_id == media.id))
+    if is_avatar is not None:
         return media
 
     result = await db.execute(select(Message.conversation_id).where(Message.media_id == media.id))

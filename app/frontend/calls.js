@@ -32,6 +32,13 @@ function resolveMemberName(conversationId, userId) {
     return member ? member.display_name || member.phone_number : 'Unknown';
 }
 
+function resolveMemberAvatar(conversationId, userId) {
+    const conv = conversations.find((c) => c.id === conversationId);
+    if (!conv) return null;
+    const member = conv.members.find((m) => m.user_id === userId);
+    return member ? member.avatar_media_id : null;
+}
+
 // --- dispatch ---
 
 function handleCallEvent(data) {
@@ -70,7 +77,8 @@ async function startCall(video) {
     const conversationId = currentConversation.id;
 
     activeCall = { callId: null, conversationId, video, direction: 'outgoing', participants: new Set() };
-    showCallOverlayRinging('outgoing', conversationDisplayName(currentConversation), video);
+    const peerAvatar = conversationAvatarInfo(currentConversation);
+    showCallOverlayRinging('outgoing', peerAvatar.label, video, peerAvatar.mediaId);
 
     try {
         localStream = await navigator.mediaDevices.getUserMedia(mediaConstraints(video));
@@ -110,7 +118,8 @@ function onCallIncoming(data) {
         participants: new Set(),
     };
     const callerName = resolveMemberName(data.conversation_id, data.caller_id);
-    showCallOverlayRinging('incoming', callerName, data.video);
+    const callerAvatar = resolveMemberAvatar(data.conversation_id, data.caller_id);
+    showCallOverlayRinging('incoming', callerName, data.video, callerAvatar);
 }
 
 document.getElementById('callAcceptBtn').addEventListener('click', async () => {
@@ -363,20 +372,13 @@ function setCallButtonsEnabled(enabled) {
     if (videoBtn) videoBtn.disabled = !enabled;
 }
 
-function initialsFor(name) {
-    if (!name) return '?';
-    const parts = name.trim().split(/\s+/).filter(Boolean);
-    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-    return name.slice(0, 2).toUpperCase();
-}
-
-function showCallOverlayRinging(direction, peerName, video) {
+function showCallOverlayRinging(direction, peerName, video, peerAvatarMediaId) {
     setCallButtonsEnabled(false);
     document.getElementById('callOverlay').hidden = false;
     document.getElementById('callRingingView').hidden = false;
     document.getElementById('callActiveView').hidden = true;
 
-    document.getElementById('callAvatar').textContent = initialsFor(peerName);
+    renderAvatar(document.getElementById('callAvatar'), peerAvatarMediaId, peerName);
     document.getElementById('callPeerName').textContent = peerName;
     document.getElementById('callStatusText').textContent =
         direction === 'outgoing' ? 'Calling...' : `Incoming ${video ? 'video' : 'audio'} call`;
@@ -422,8 +424,8 @@ function renderLocalTile() {
         tile.appendChild(video);
     } else {
         const avatar = document.createElement('div');
-        avatar.className = 'call-tile-avatar';
-        avatar.textContent = initialsFor(session.user.display_name || session.user.phone_number);
+        avatar.className = 'avatar call-tile-avatar';
+        renderAvatar(avatar, session.user.avatar_media_id, session.user.display_name || session.user.phone_number);
         tile.appendChild(avatar);
     }
 
@@ -444,8 +446,8 @@ function ensureTilePlaceholder(userId) {
 
     const name = resolveMemberName(activeCall.conversationId, userId);
     const avatar = document.createElement('div');
-    avatar.className = 'call-tile-avatar';
-    avatar.textContent = initialsFor(name);
+    avatar.className = 'avatar call-tile-avatar';
+    renderAvatar(avatar, resolveMemberAvatar(activeCall.conversationId, userId), name);
     tile.appendChild(avatar);
 
     const label = document.createElement('div');

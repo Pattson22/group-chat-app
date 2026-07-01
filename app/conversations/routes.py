@@ -28,6 +28,7 @@ async def _serialize_conversation(db: AsyncSession, conversation: Conversation) 
             user_id=member.user_id,
             phone_number=user.phone_number,
             display_name=user.display_name,
+            avatar_media_id=user.avatar_media_id,
             role=member.role,
             joined_at=member.joined_at,
         )
@@ -142,6 +143,7 @@ async def list_members(
             user_id=member.user_id,
             phone_number=user.phone_number,
             display_name=user.display_name,
+            avatar_media_id=user.avatar_media_id,
             role=member.role,
             joined_at=member.joined_at,
         )

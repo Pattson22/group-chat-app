@@ -287,9 +287,98 @@ button.icon-btn.is-loading::after {
     margin-bottom: 10px;
 }
 
+.inbox-identity {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.inbox-identity h2 {
+    margin: 0;
+}
+
 .inbox-actions {
     display: flex;
     gap: 4px;
+}
+
+/* --- Avatars --- */
+.avatar {
+    border-radius: 50%;
+    overflow: hidden;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.avatar.avatar-initials {
+    background: var(--color-primary);
+    color: white;
+    font-weight: 700;
+}
+
+.avatar-sm {
+    width: 36px;
+    height: 36px;
+    font-size: 14px;
+}
+
+.avatar-md {
+    width: 48px;
+    height: 48px;
+    font-size: 17px;
+}
+
+.avatar-lg {
+    width: 88px;
+    height: 88px;
+    font-size: 30px;
+    border: 2px solid var(--color-foreground);
+}
+
+.avatar-btn {
+    background: transparent;
+    padding: 0;
+    border: none;
+    box-shadow: none;
+}
+
+.avatar-btn:hover {
+    filter: brightness(0.95);
+    box-shadow: none;
+    transform: none;
+}
+
+.avatar-picker {
+    background: transparent;
+    box-shadow: none;
+    padding: 0;
+    margin: 0 auto 14px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    color: var(--color-muted-foreground);
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.avatar-picker:hover {
+    box-shadow: none;
+    transform: none;
+    filter: none;
+    color: var(--color-primary);
+}
+
+.avatar-picker .avatar-lg {
+    margin: 0 auto;
 }
 
 .inline-panel {
@@ -334,12 +423,20 @@ button.icon-btn.is-loading::after {
 
 .conversation-item {
     display: flex;
-    flex-direction: column;
+    align-items: center;
+    gap: 12px;
     padding: 12px 14px;
     border-radius: var(--radius-md);
     cursor: pointer;
     transition: background-color var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
     animation: list-item-enter var(--duration-base) var(--ease-out) both;
+}
+
+.conversation-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    flex: 1;
 }
 
 @keyframes list-item-enter {

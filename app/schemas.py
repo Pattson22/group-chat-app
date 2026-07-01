@@ -27,7 +27,7 @@ class UserOut(BaseModel):
     id: uuid.UUID
     phone_number: str
     display_name: str | None = None
-    avatar_url: str | None = None
+    avatar_media_id: uuid.UUID | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -60,6 +60,7 @@ class ConversationMemberOut(BaseModel):
     user_id: uuid.UUID
     phone_number: str
     display_name: str | None = None
+    avatar_media_id: uuid.UUID | None = None
     role: str
     joined_at: datetime
 

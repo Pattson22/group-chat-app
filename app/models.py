@@ -17,7 +17,19 @@ class User(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     phone_number: Mapped[str] = mapped_column(String, unique=True, index=True, nullable=False)
     display_name: Mapped[str | None] = mapped_column(String, nullable=True)
-    avatar_url: Mapped[str | None] = mapped_column(String, nullable=True)
+    # References the same media/ table message attachments use. Unlike
+    # message media (scoped to conversation members), avatars are treated
+    # as visible to any authenticated user -- see get_media_for_user.
+    # use_alter=True: users.avatar_media_id -> media and media.uploader_id
+    # -> users form a genuine circular FK, so this constraint must be added
+    # after both tables exist rather than inline with CREATE TABLE (matches
+    # the two-step add_column/create_foreign_key already used in the
+    # Alembic migration for this column).
+    avatar_media_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("media.id", use_alter=True, name="fk_users_avatar_media_id_media"),
+        nullable=True,
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 

@@ -186,6 +186,63 @@ document.getElementById('verifyCodeBtn').addEventListener('click', async (e) => 
     }
 });
 
+function openProfileScreen(mode) {
+    // mode: 'setup' (first login, no way back yet) or 'edit' (revisited
+    // later via the inbox avatar, with a name already on file).
+    document.getElementById('displayNameInput').value = mode === 'edit' ? session.user.display_name || '' : '';
+    document.getElementById('profileError').textContent = '';
+    document.getElementById('avatarError').textContent = '';
+    document.getElementById('backToInboxFromProfileBtn').hidden = mode !== 'edit';
+    renderAvatar(
+        document.getElementById('profileAvatarPreview'),
+        session.user.avatar_media_id,
+        session.user.display_name || session.user.phone_number
+    );
+    showView('view-profile');
+}
+
+document.getElementById('myAvatarBtn').addEventListener('click', () => {
+    openProfileScreen('edit');
+});
+
+document.getElementById('backToInboxFromProfileBtn').addEventListener('click', async () => {
+    await enterInbox();
+});
+
+document.getElementById('avatarPickerBtn').addEventListener('click', () => {
+    document.getElementById('avatarInput').click();
+});
+
+document.getElementById('avatarInput').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+
+    const errorEl = document.getElementById('avatarError');
+    errorEl.textContent = '';
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+        const resp = await apiFetch('/auth/me/avatar', { method: 'POST', body: formData });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok) {
+            showError(errorEl, data.detail || 'Failed to upload photo.');
+            return;
+        }
+        session.user = data;
+        saveSession();
+        await renderAvatar(
+            document.getElementById('profileAvatarPreview'),
+            session.user.avatar_media_id,
+            session.user.display_name || session.user.phone_number
+        );
+    } catch (err) {
+        showError(errorEl, 'Failed to upload photo.');
+    }
+});
+
 document.getElementById('saveProfileBtn').addEventListener('click', async (e) => {
     const btn = e.currentTarget;
     const nameInput = document.getElementById('displayNameInput');
@@ -238,7 +295,7 @@ document.getElementById('logoutBtn').addEventListener('click', async () => {
 
 async function afterLogin() {
     if (!session.user.display_name) {
-        showView('view-profile');
+        openProfileScreen('setup');
     } else {
         await enterInbox();
     }
@@ -303,10 +360,50 @@ function updateConversationPreview(msg) {
     }
 }
 
+// --- avatars ---
+
+function initialsFor(name) {
+    if (!name) return '?';
+    const parts = name.trim().split(/\s+/).filter(Boolean);
+    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+    return name.slice(0, 2).toUpperCase();
+}
+
+// Renders either the fetched photo (as an <img>) or a flat initials
+// fallback into `el`, which is expected to already carry avatar/avatar-*
+// sizing classes -- this only ever adds/removes the avatar-initials class.
+async function renderAvatar(el, mediaId, label) {
+    if (mediaId) {
+        const url = await fetchMediaBlobUrl(mediaId);
+        if (url) {
+            el.classList.remove('avatar-initials');
+            el.innerHTML = '';
+            const img = document.createElement('img');
+            img.src = url;
+            img.alt = '';
+            el.appendChild(img);
+            return;
+        }
+    }
+    el.classList.add('avatar-initials');
+    el.textContent = initialsFor(label);
+}
+
+function conversationAvatarInfo(conv) {
+    if (conv.type === 'group') {
+        return { mediaId: null, label: conv.name || 'Group' };
+    }
+    const other = conv.members.find((m) => m.user_id !== session.user.id);
+    return other
+        ? { mediaId: other.avatar_media_id, label: other.display_name || other.phone_number }
+        : { mediaId: null, label: 'You' };
+}
+
 // --- inbox ---
 
 async function enterInbox() {
     document.getElementById('meLabel').textContent = session.user.display_name || session.user.phone_number;
+    renderAvatar(document.getElementById('myAvatar'), session.user.avatar_media_id, session.user.display_name || session.user.phone_number);
     if (!ws || ws.readyState !== WebSocket.OPEN) {
         connectWs();
     }
@@ -352,6 +449,14 @@ function renderConversationList() {
         li.className = 'conversation-item';
         li.style.animationDelay = `${Math.min(index, 10) * 40}ms`;
 
+        const avatarDiv = document.createElement('div');
+        avatarDiv.className = 'avatar avatar-md avatar-initials';
+        const avatarInfo = conversationAvatarInfo(conv);
+        renderAvatar(avatarDiv, avatarInfo.mediaId, avatarInfo.label);
+
+        const textDiv = document.createElement('div');
+        textDiv.className = 'conversation-text';
+
         const nameDiv = document.createElement('div');
         nameDiv.className = 'conversation-name';
         nameDiv.textContent = conversationDisplayName(conv);
@@ -360,8 +465,10 @@ function renderConversationList() {
         previewDiv.className = 'conversation-preview';
         previewDiv.textContent = conversationPreviewLabel(conv);
 
-        li.appendChild(nameDiv);
-        li.appendChild(previewDiv);
+        textDiv.appendChild(nameDiv);
+        textDiv.appendChild(previewDiv);
+        li.appendChild(avatarDiv);
+        li.appendChild(textDiv);
         li.addEventListener('click', () => openConversation(conv));
         list.appendChild(li);
     });
@@ -482,6 +589,8 @@ async function openConversation(conv) {
     oldestLoadedMessageId = null;
     hasMoreOlder = false;
     document.getElementById('chatTitle').textContent = conversationDisplayName(conv);
+    const avatarInfo = conversationAvatarInfo(conv);
+    renderAvatar(document.getElementById('chatAvatar'), avatarInfo.mediaId, avatarInfo.label);
     document.getElementById('chatError').textContent = '';
     showView('view-chat');
     renderSkeletonRows(document.getElementById('messages'), 5);
