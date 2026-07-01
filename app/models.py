@@ -35,6 +35,21 @@ class OtpRequest(Base):
     requested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
 
 
+class OtpVerifyAttempt(Base):
+    """Ledger of *failed* OTP verification attempts, separate from
+    OtpRequest (which throttles send-code requests). Caps how many codes
+    can be guessed per phone number regardless of OTP provider -- Twilio
+    Verify enforces this server-side too, but DevOtpProvider doesn't, and
+    this also gives defense-in-depth either way."""
+
+    __tablename__ = "otp_verify_attempts"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    phone_number: Mapped[str] = mapped_column(String, index=True, nullable=False)
+    ip_address: Mapped[str] = mapped_column(String, nullable=False)
+    attempted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+
 class RefreshToken(Base):
     __tablename__ = "refresh_tokens"
 

@@ -18,6 +18,11 @@ class Settings(BaseSettings):
     otp_request_limit_per_phone: int = 3
     otp_request_limit_per_ip: int = 10
     otp_request_window_seconds: int = 600
+    otp_verify_attempt_limit_per_phone: int = 5
+    otp_verify_attempt_window_seconds: int = 600
+
+    # Messages
+    message_max_length: int = 4000
 
     # Twilio Verify (only required when otp_provider == "twilio")
     twilio_account_sid: str | None = None

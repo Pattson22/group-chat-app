@@ -22,12 +22,14 @@ from app.messages.service import create_message
 from app.models import Media
 from app.realtime.manager import ConnectionManager
 from app.schemas import MessageOut
+from app.users.routes import router as users_router
 
 app = FastAPI()
 app.include_router(auth_router)
 app.include_router(conversations_router)
 app.include_router(messages_router)
 app.include_router(media_router)
+app.include_router(users_router)
 
 FRONTEND_DIR = Path(__file__).parent / "frontend"
 app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
@@ -95,6 +97,14 @@ async def websocket_endpoint(websocket: WebSocket, db: AsyncSession = Depends(ge
                 msg_body = None
                 msg_media_id = media.id
             elif isinstance(text_body, str) and text_body.strip():
+                if len(text_body) > settings.message_max_length:
+                    await manager.send_personal_message(
+                        json.dumps(
+                            {"type": "system", "text": f"Message too long (max {settings.message_max_length} characters)"}
+                        ),
+                        websocket,
+                    )
+                    continue
                 msg_type = "text"
                 msg_body = text_body
                 msg_media_id = None

@@ -3,6 +3,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.deps import get_current_user
+from app.config import settings
 from app.conversations.deps import get_conversation_for_member
 from app.db import get_db
 from app.messages.service import create_message
@@ -21,6 +22,10 @@ async def send_message(
 ):
     if not payload.body.strip():
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Message body cannot be empty")
+    if len(payload.body) > settings.message_max_length:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, f"Message too long (max {settings.message_max_length} characters)"
+        )
 
     message = await create_message(db, conversation, current_user.id, payload.body)
     return MessageOut.model_validate(message)

@@ -1,56 +1,113 @@
 <!DOCTYPE html>
 <html>
     <head>
+        <meta charset="utf-8" />
         <title>Project Chat</title>
-        <style>
-            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f0f2f5; margin: 0; padding: 20px; display: flex; justify-content: center; }
-            .container { width: 100%; max-width: 600px; background: white; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); padding: 20px; }
-
-            #chat-box { display: none; display: flex; flex-direction: column; height: 80vh; }
-            #setup-box { text-align: center; margin-top: 50px; }
-
-            h1, h2 { color: #1c1e21; margin-top: 0; }
-            input[type="text"] { width: calc(100% - 24px); padding: 12px; margin-bottom: 15px; border: 1px solid #ccc; border-radius: 6px; font-size: 16px; }
-            button { width: 100%; padding: 12px; cursor: pointer; background-color: #0866ff; color: white; border: none; border-radius: 6px; font-size: 16px; font-weight: bold; }
-            button:hover { background-color: #0054d1; }
-
-            #messages-container { flex-grow: 1; overflow-y: auto; padding: 10px; background: #e4e6eb; border-radius: 8px; margin-bottom: 15px; }
-            #messages { list-style-type: none; padding: 0; margin: 0; display: flex; flex-direction: column; }
-
-            /* Chat Bubble Styling */
-            .msg-wrapper { margin-bottom: 15px; display: flex; flex-direction: column; }
-            .msg-wrapper.system { align-items: center; }
-            .system-text { font-size: 12px; color: #65676b; background: #d8dadf; padding: 4px 10px; border-radius: 12px; }
-
-            .msg-bubble { max-width: 80%; padding: 10px 14px; border-radius: 18px; position: relative; background-color: white; color: black; align-self: flex-start; border-bottom-left-radius: 4px; box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
-            .msg-bubble.self { background-color: #0866ff; color: white; align-self: flex-end; border-bottom-left-radius: 18px; border-bottom-right-radius: 4px; }
-
-            .msg-sender { font-size: 11px; font-weight: bold; margin-bottom: 4px; opacity: 0.8; }
-            .msg-time { font-size: 10px; text-align: right; margin-top: 5px; opacity: 0.7; }
-
-            .input-area { display: flex; gap: 10px; }
-            .input-area input { margin-bottom: 0; width: auto; flex-grow: 1; }
-            .input-area button { width: auto; padding: 10px 20px; }
-        </style>
+        <link rel="stylesheet" href="/static/styles.css" />
     </head>
     <body>
-        <div class="container">
-            <div id="setup-box">
-                <h1>Group Project Chat</h1>
-                <input type="text" id="roomName" placeholder="Enter Room Name (e.g., biology-project)"/>
-                <input type="text" id="userName" placeholder="Enter Your Name"/>
-                <button onclick="joinRoom()">Join Chat</button>
+        <div class="app">
+            <!-- Phone entry -->
+            <div id="view-phone" class="screen">
+                <div class="auth-card">
+                    <h1>Group Project Chat</h1>
+                    <p class="subtitle">Enter your phone number to get started</p>
+                    <input type="tel" id="phoneInput" placeholder="+15551234567" autocomplete="tel" />
+                    <div id="phoneError" class="error-text"></div>
+                    <button id="sendCodeBtn">Send Code</button>
+                </div>
             </div>
 
-            <div id="chat-box" style="display: none;">
-                <h2>Room: <span id="current-room"></span></h2>
-                <div id="messages-container">
-                    <ul id='messages'></ul>
+            <!-- OTP entry -->
+            <div id="view-otp" class="screen" hidden>
+                <div class="auth-card">
+                    <h1>Enter Code</h1>
+                    <p class="subtitle">We sent a code to <span id="otpPhoneLabel"></span></p>
+                    <div id="devCodeHint" class="dev-hint" hidden></div>
+                    <input
+                        type="text"
+                        id="otpInput"
+                        placeholder="6-digit code"
+                        autocomplete="one-time-code"
+                        inputmode="numeric"
+                        maxlength="6"
+                    />
+                    <div id="otpError" class="error-text"></div>
+                    <button id="verifyCodeBtn">Verify</button>
+                    <button id="backToPhoneBtn" class="secondary">Use a different number</button>
                 </div>
-                <form class="input-area" action="" onsubmit="sendMessage(event)">
-                    <input type="text" id="messageText" autocomplete="off" placeholder="Type a message..."/>
-                    <button>Send</button>
-                </form>
+            </div>
+
+            <!-- Display name setup (first login only) -->
+            <div id="view-profile" class="screen" hidden>
+                <div class="auth-card">
+                    <h1>Choose a name</h1>
+                    <p class="subtitle">This is what other people will see</p>
+                    <input type="text" id="displayNameInput" placeholder="Your name" />
+                    <div id="profileError" class="error-text"></div>
+                    <button id="saveProfileBtn">Continue</button>
+                </div>
+            </div>
+
+            <!-- Inbox -->
+            <div id="view-inbox" class="screen" hidden>
+                <div class="inbox-layout">
+                    <div class="inbox-header">
+                        <h2 id="meLabel"></h2>
+                        <div class="inbox-actions">
+                            <button id="newChatBtn" class="icon-btn">New chat</button>
+                            <button id="newGroupBtn" class="icon-btn">New group</button>
+                            <button id="logoutBtn" class="icon-btn">Log out</button>
+                        </div>
+                    </div>
+
+                    <div id="newChatPanel" class="inline-panel" hidden>
+                        <input type="tel" id="newChatPhoneInput" placeholder="Phone number, e.g. +15551234567" />
+                        <div id="newChatError" class="error-text"></div>
+                        <div class="panel-actions">
+                            <button id="newChatSubmitBtn">Start chat</button>
+                            <button id="newChatCancelBtn" class="secondary">Cancel</button>
+                        </div>
+                    </div>
+
+                    <div id="newGroupPanel" class="inline-panel" hidden>
+                        <input type="text" id="newGroupNameInput" placeholder="Group name" />
+                        <input type="text" id="newGroupMembersInput" placeholder="Member phone numbers, comma separated" />
+                        <div id="newGroupError" class="error-text"></div>
+                        <div class="panel-actions">
+                            <button id="newGroupSubmitBtn">Create group</button>
+                            <button id="newGroupCancelBtn" class="secondary">Cancel</button>
+                        </div>
+                    </div>
+
+                    <ul id="conversationList" class="conversation-list"></ul>
+                </div>
+            </div>
+
+            <!-- Conversation -->
+            <div id="view-chat" class="screen" hidden>
+                <div class="chat-layout">
+                    <div class="chat-header">
+                        <button id="backToInboxBtn" class="icon-btn">&larr;</button>
+                        <h2 id="chatTitle"></h2>
+                    </div>
+                    <button id="loadOlderBtn" class="load-older" hidden type="button">Load older messages</button>
+                    <div id="messagesContainer" class="messages-container">
+                        <ul id="messages"></ul>
+                    </div>
+                    <div id="chatError" class="error-text"></div>
+                    <form id="messageForm" class="input-area">
+                        <input
+                            type="file"
+                            id="fileInput"
+                            accept="image/jpeg,image/png,image/gif,image/webp,application/pdf,text/plain"
+                            hidden
+                        />
+                        <button type="button" id="attachBtn" class="icon-btn" title="Attach a file">📎</button>
+                        <input type="text" id="messageText" placeholder="Type a message..." autocomplete="off" />
+                        <button type="submit">Send</button>
+                    </form>
+                </div>
             </div>
         </div>
 

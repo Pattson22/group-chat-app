@@ -39,6 +39,10 @@ class TokenOut(BaseModel):
     user: UserOut
 
 
+class UpdateMeIn(BaseModel):
+    display_name: str | None = None
+
+
 class CreateDmIn(BaseModel):
     other_user_id: uuid.UUID
 

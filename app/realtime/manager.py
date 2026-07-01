@@ -6,7 +6,29 @@ from fastapi import WebSocket
 
 class ConnectionManager:
     """Tracks a user's live websocket connections (a user may have more
-    than one -- multiple tabs/devices)."""
+    than one -- multiple tabs/devices).
+
+    Scaling limitation: active_connections is an in-memory dict on this
+    process. A message from a user connected to server instance A will
+    never reach a recipient connected to instance B -- this only works
+    correctly with a single backend process. That's fine for now (single
+    instance), but becomes a real problem the moment this needs to run
+    behind a load balancer with multiple instances, or survive zero-
+    downtime rolling deploys.
+
+    Upgrade path when that's needed: introduce a pub/sub backplane (Redis
+    pub/sub is the standard choice; Postgres LISTEN/NOTIFY is a viable
+    lower-effort alternative given Postgres is already the datastore) so
+    that publishing a message broadcasts it to *all* instances, each of
+    which then fans it out to whichever of the target users happen to be
+    connected locally. The call sites in app/main.py (`broadcast_to_users`)
+    are written against this class's public interface specifically so that
+    swap can happen here without changing the websocket route itself --
+    only `send_to_user`/`broadcast_to_users` would need to publish to the
+    backplane instead of writing directly to local sockets, and a new
+    subscriber loop would call the existing per-connection send logic for
+    sockets live on that instance.
+    """
 
     def __init__(self):
         self.active_connections: Dict[uuid.UUID, List[WebSocket]] = {}

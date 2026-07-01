@@ -1,4 +1,3 @@
-import re
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -7,42 +6,57 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.deps import get_current_user
 from app.auth.otp import otp_provider
-from app.auth.rate_limit import check_and_record_otp_request
+from app.auth.rate_limit import (
+    check_and_record_otp_request,
+    has_otp_verify_attempts_remaining,
+    record_otp_verify_failure,
+)
 from app.auth.tokens import create_access_token, generate_refresh_token, hash_refresh_token
 from app.db import get_db
 from app.models import RefreshToken, User
-from app.schemas import RefreshIn, RequestOtpIn, RequestOtpOut, TokenOut, UserOut, VerifyOtpIn
+from app.phone import normalize_phone_number
+from app.schemas import RefreshIn, RequestOtpIn, RequestOtpOut, TokenOut, UpdateMeIn, UserOut, VerifyOtpIn
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-# Basic E.164 sanity check (+ country code + up to 15 digits total).
-PHONE_RE = re.compile(r"^\+[1-9]\d{6,14}$")
+PHONE_FORMAT_ERROR = "Phone number must be a valid number in E.164 format, e.g. +15551234567"
 
 
 @router.post("/request-otp", response_model=RequestOtpOut)
 async def request_otp(payload: RequestOtpIn, request: Request, db: AsyncSession = Depends(get_db)):
-    if not PHONE_RE.match(payload.phone_number):
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Phone number must be in E.164 format, e.g. +15551234567")
+    phone_number = normalize_phone_number(payload.phone_number)
+    if phone_number is None:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, PHONE_FORMAT_ERROR)
 
     client_ip = request.client.host if request.client else "unknown"
-    allowed = await check_and_record_otp_request(db, payload.phone_number, client_ip)
+    allowed = await check_and_record_otp_request(db, phone_number, client_ip)
     if not allowed:
         raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "Too many OTP requests, try again later")
 
-    dev_code = await otp_provider.start_verification(payload.phone_number)
+    dev_code = await otp_provider.start_verification(phone_number)
     return RequestOtpOut(dev_otp_code=dev_code)
 
 
 @router.post("/verify-otp", response_model=TokenOut)
 async def verify_otp(payload: VerifyOtpIn, request: Request, db: AsyncSession = Depends(get_db)):
-    ok = await otp_provider.check_verification(payload.phone_number, payload.code)
+    phone_number = normalize_phone_number(payload.phone_number)
+    if phone_number is None:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, PHONE_FORMAT_ERROR)
+
+    client_ip = request.client.host if request.client else "unknown"
+
+    if not await has_otp_verify_attempts_remaining(db, phone_number):
+        raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "Too many failed attempts, request a new code")
+
+    ok = await otp_provider.check_verification(phone_number, payload.code)
     if not ok:
+        await record_otp_verify_failure(db, phone_number, client_ip)
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid or expired code")
 
-    result = await db.execute(select(User).where(User.phone_number == payload.phone_number))
+    result = await db.execute(select(User).where(User.phone_number == phone_number))
     user = result.scalar_one_or_none()
     if user is None:
-        user = User(phone_number=payload.phone_number)
+        user = User(phone_number=phone_number)
         db.add(user)
         await db.flush()
 
@@ -100,4 +114,21 @@ async def logout(payload: RefreshIn, db: AsyncSession = Depends(get_db)):
 
 @router.get("/me", response_model=UserOut)
 async def me(current_user: User = Depends(get_current_user)):
+    return UserOut.model_validate(current_user)
+
+
+@router.patch("/me", response_model=UserOut)
+async def update_me(
+    payload: UpdateMeIn,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if payload.display_name is not None:
+        display_name = payload.display_name.strip()
+        if not display_name:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Display name cannot be empty")
+        current_user.display_name = display_name
+
+    await db.commit()
+    await db.refresh(current_user)
     return UserOut.model_validate(current_user)
