@@ -80,7 +80,14 @@ class Conversation(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     type: Mapped[str] = mapped_column(Enum("dm", "group", name="conversation_type"), nullable=False)
     name: Mapped[str | None] = mapped_column(String, nullable=True)
-    avatar_url: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Group photo, set by admins; always NULL for DMs (a DM's "avatar" is
+    # just the other member's user avatar). Visible to conversation members
+    # only -- see get_media_for_user.
+    avatar_media_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("media.id", name="fk_conversations_avatar_media_id_media"),
+        nullable=True,
+    )
     # Sorted "user_id_a:user_id_b" for DMs, NULL for groups -- the unique
     # constraint is what makes create-DM idempotent (find-or-create).
     dm_key: Mapped[str | None] = mapped_column(String, unique=True, nullable=True)

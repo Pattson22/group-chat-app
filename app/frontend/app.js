@@ -288,8 +288,8 @@ document.getElementById('logoutBtn').addEventListener('click', async () => {
         ws = null;
     }
     clearSession();
-    currentConversation = null;
     conversations = [];
+    resetChatPanel();
     showView('view-phone');
 });
 
@@ -355,7 +355,7 @@ function updateConversationPreview(msg) {
     conversations[idx].last_message_at = msg.created_at;
     const [conv] = conversations.splice(idx, 1);
     conversations.unshift(conv);
-    if (isViewVisible('view-inbox')) {
+    if (isViewVisible('view-main')) {
         renderConversationList();
     }
 }
@@ -391,7 +391,7 @@ async function renderAvatar(el, mediaId, label) {
 
 function conversationAvatarInfo(conv) {
     if (conv.type === 'group') {
-        return { mediaId: null, label: conv.name || 'Group' };
+        return { mediaId: conv.avatar_media_id, label: conv.name || 'Group' };
     }
     const other = conv.members.find((m) => m.user_id !== session.user.id);
     return other
@@ -399,7 +399,7 @@ function conversationAvatarInfo(conv) {
         : { mediaId: null, label: 'You' };
 }
 
-// --- inbox ---
+// --- main view (sidebar + chat panel) ---
 
 async function enterInbox() {
     document.getElementById('meLabel').textContent = session.user.display_name || session.user.phone_number;
@@ -407,8 +407,15 @@ async function enterInbox() {
     if (!ws || ws.readyState !== WebSocket.OPEN) {
         connectWs();
     }
-    showView('view-inbox');
+    showView('view-main');
     await loadConversations();
+}
+
+function resetChatPanel() {
+    currentConversation = null;
+    document.getElementById('chatArea').hidden = true;
+    document.getElementById('chatEmpty').hidden = false;
+    document.getElementById('appShell').classList.remove('chat-open');
 }
 
 async function loadConversations() {
@@ -428,25 +435,41 @@ function conversationDisplayName(conv) {
 }
 
 function conversationPreviewLabel(conv) {
-    if (!conv.last_message_at) return 'No messages yet';
-    return `Last active ${formatTime(conv.last_message_at)}`;
+    // The API doesn't return last-message bodies with the conversation
+    // list, so the subtitle is descriptive rather than a message preview.
+    if (conv.type === 'group') {
+        return `Group · ${conv.members.length} members`;
+    }
+    const other = conv.members.find((m) => m.user_id !== session.user.id);
+    return other ? other.phone_number : 'No messages yet';
 }
+
+let conversationFilter = '';
 
 function renderConversationList() {
     const list = document.getElementById('conversationList');
     list.innerHTML = '';
 
-    if (conversations.length === 0) {
+    const visible = conversations.filter((conv) =>
+        conversationDisplayName(conv).toLowerCase().includes(conversationFilter)
+    );
+
+    if (visible.length === 0) {
         const li = document.createElement('li');
         li.className = 'empty-state';
-        li.textContent = 'No conversations yet. Start a new chat!';
+        li.textContent = conversationFilter
+            ? 'No chats match your search.'
+            : 'No conversations yet. Start a new chat!';
         list.appendChild(li);
         return;
     }
 
-    conversations.forEach((conv, index) => {
+    visible.forEach((conv, index) => {
         const li = document.createElement('li');
         li.className = 'conversation-item';
+        if (currentConversation && conv.id === currentConversation.id) {
+            li.classList.add('active');
+        }
         li.style.animationDelay = `${Math.min(index, 10) * 40}ms`;
 
         const avatarDiv = document.createElement('div');
@@ -457,15 +480,26 @@ function renderConversationList() {
         const textDiv = document.createElement('div');
         textDiv.className = 'conversation-text';
 
+        const topDiv = document.createElement('div');
+        topDiv.className = 'conversation-top';
+
         const nameDiv = document.createElement('div');
         nameDiv.className = 'conversation-name';
         nameDiv.textContent = conversationDisplayName(conv);
+        topDiv.appendChild(nameDiv);
+
+        if (conv.last_message_at) {
+            const timeDiv = document.createElement('div');
+            timeDiv.className = 'conversation-time';
+            timeDiv.textContent = formatTime(conv.last_message_at);
+            topDiv.appendChild(timeDiv);
+        }
 
         const previewDiv = document.createElement('div');
         previewDiv.className = 'conversation-preview';
         previewDiv.textContent = conversationPreviewLabel(conv);
 
-        textDiv.appendChild(nameDiv);
+        textDiv.appendChild(topDiv);
         textDiv.appendChild(previewDiv);
         li.appendChild(avatarDiv);
         li.appendChild(textDiv);
@@ -473,6 +507,11 @@ function renderConversationList() {
         list.appendChild(li);
     });
 }
+
+document.getElementById('searchInput').addEventListener('input', (e) => {
+    conversationFilter = e.target.value.trim().toLowerCase();
+    renderConversationList();
+});
 
 document.getElementById('newChatBtn').addEventListener('click', () => {
     document.getElementById('newGroupPanel').hidden = true;
@@ -590,17 +629,63 @@ async function openConversation(conv) {
     hasMoreOlder = false;
     document.getElementById('chatTitle').textContent = conversationDisplayName(conv);
     const avatarInfo = conversationAvatarInfo(conv);
-    renderAvatar(document.getElementById('chatAvatar'), avatarInfo.mediaId, avatarInfo.label);
+    const chatAvatar = document.getElementById('chatAvatar');
+    renderAvatar(chatAvatar, avatarInfo.mediaId, avatarInfo.label);
+    // Group photos are editable from here (the server enforces that only
+    // admins can actually change it); a DM's avatar is just the other
+    // person's profile photo, so it's not clickable.
+    chatAvatar.classList.toggle('avatar-editable', conv.type === 'group');
+    chatAvatar.title = conv.type === 'group' ? 'Change group photo' : '';
     document.getElementById('chatError').textContent = '';
-    showView('view-chat');
+
+    document.getElementById('chatEmpty').hidden = true;
+    document.getElementById('chatArea').hidden = false;
+    // Mobile: swap the stacked panes over to the chat.
+    document.getElementById('appShell').classList.add('chat-open');
+    renderConversationList(); // move the active highlight
+
     renderSkeletonRows(document.getElementById('messages'), 5);
     await loadMessages();
 }
 
-document.getElementById('backToInboxBtn').addEventListener('click', async () => {
-    currentConversation = null;
-    showView('view-inbox');
-    await loadConversations();
+document.getElementById('chatAvatar').addEventListener('click', () => {
+    if (currentConversation && currentConversation.type === 'group') {
+        document.getElementById('groupAvatarInput').click();
+    }
+});
+
+document.getElementById('groupAvatarInput').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (!file || !currentConversation) return;
+
+    const errorEl = document.getElementById('chatError');
+    errorEl.textContent = '';
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const resp = await apiFetch(`/conversations/${currentConversation.id}/avatar`, {
+        method: 'POST',
+        body: formData,
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+        showError(errorEl, data.detail || 'Failed to update group photo.');
+        return;
+    }
+
+    currentConversation = data;
+    const idx = conversations.findIndex((c) => c.id === data.id);
+    if (idx !== -1) conversations[idx] = data;
+    const avatarInfo = conversationAvatarInfo(data);
+    renderAvatar(document.getElementById('chatAvatar'), avatarInfo.mediaId, avatarInfo.label);
+});
+
+// Mobile-only control: slides back from the chat pane to the list. The
+// conversation stays "current" so incoming messages keep appending.
+document.getElementById('backToInboxBtn').addEventListener('click', () => {
+    document.getElementById('appShell').classList.remove('chat-open');
 });
 
 async function loadMessages(before) {

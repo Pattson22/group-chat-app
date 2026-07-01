@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.deps import get_current_user
 from app.db import get_db
-from app.models import ConversationMember, Media, Message, User
+from app.models import Conversation, ConversationMember, Media, Message, User
 
 
 async def get_media_for_user(
@@ -34,8 +34,15 @@ async def get_media_for_user(
     if is_avatar is not None:
         return media
 
-    result = await db.execute(select(Message.conversation_id).where(Message.media_id == media.id))
+    # Group avatars are narrower than user avatars: only the group's own
+    # members see them (they render in members' inboxes/chat headers, and
+    # nowhere else), so this reuses the same membership gate as message
+    # attachments rather than the any-authenticated-user rule above.
+    result = await db.execute(select(Conversation.id).where(Conversation.avatar_media_id == media.id))
     conversation_ids = {row[0] for row in result.all()}
+
+    result = await db.execute(select(Message.conversation_id).where(Message.media_id == media.id))
+    conversation_ids.update(row[0] for row in result.all())
     if not conversation_ids:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Media not found")
 

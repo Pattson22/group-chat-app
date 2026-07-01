@@ -71,7 +71,7 @@ class ConversationOut(BaseModel):
     id: uuid.UUID
     type: str
     name: str | None = None
-    avatar_url: str | None = None
+    avatar_media_id: uuid.UUID | None = None
     created_by: uuid.UUID
     created_at: datetime
     last_message_at: datetime | None = None

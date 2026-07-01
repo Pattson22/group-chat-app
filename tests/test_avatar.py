@@ -120,3 +120,108 @@ def test_conversation_members_include_avatar_media_id(client):
     bob_member = next(m for m in members if m["user_id"] == bob["user"]["id"])
     assert alice_member["avatar_media_id"] is not None
     assert bob_member["avatar_media_id"] is None
+
+
+# --- group avatars ---
+
+
+def _make_group(client, owner, member_ids, name="Group"):
+    resp = client.post(
+        "/conversations/group", json={"name": name, "member_ids": member_ids}, headers=auth_headers(owner)
+    )
+    assert resp.status_code == 201
+    return resp.json()
+
+
+def test_admin_can_set_group_avatar(client):
+    alice = signup(client, display_name="Alice")
+    bob = signup(client, display_name="Bob")
+    group = _make_group(client, alice, [bob["user"]["id"]])
+    assert group["avatar_media_id"] is None
+
+    resp = client.post(
+        f"/conversations/{group['id']}/avatar",
+        files={"file": ("group.png", PNG_BYTES, "image/png")},
+        headers=auth_headers(alice),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["avatar_media_id"] is not None
+
+    # It shows up in the member-facing conversation listing too.
+    resp = client.get("/conversations", headers=auth_headers(bob))
+    assert resp.json()[0]["avatar_media_id"] is not None
+
+
+def test_non_admin_member_cannot_set_group_avatar(client):
+    alice = signup(client, display_name="Alice")
+    bob = signup(client, display_name="Bob")
+    group = _make_group(client, alice, [bob["user"]["id"]])
+
+    resp = client.post(
+        f"/conversations/{group['id']}/avatar",
+        files={"file": ("group.png", PNG_BYTES, "image/png")},
+        headers=auth_headers(bob),
+    )
+    assert resp.status_code == 403
+
+
+def test_dm_cannot_have_avatar(client):
+    alice = signup(client, display_name="Alice")
+    bob = signup(client, display_name="Bob")
+    resp = client.post("/conversations/dm", json={"other_user_id": bob["user"]["id"]}, headers=auth_headers(alice))
+    dm_id = resp.json()["id"]
+
+    resp = client.post(
+        f"/conversations/{dm_id}/avatar",
+        files={"file": ("dm.png", PNG_BYTES, "image/png")},
+        headers=auth_headers(alice),
+    )
+    assert resp.status_code == 400
+
+
+def test_group_avatar_rejects_non_image(client):
+    alice = signup(client, display_name="Alice")
+    group = _make_group(client, alice, [])
+
+    resp = client.post(
+        f"/conversations/{group['id']}/avatar",
+        files={"file": ("doc.pdf", b"%PDF-1.4 ...", "application/pdf")},
+        headers=auth_headers(alice),
+    )
+    assert resp.status_code == 415
+
+
+def test_group_member_can_fetch_group_avatar_but_stranger_cannot(client):
+    alice = signup(client, display_name="Alice")
+    bob = signup(client, display_name="Bob")
+    stranger = signup(client, display_name="Stranger")
+    group = _make_group(client, alice, [bob["user"]["id"]])
+
+    resp = client.post(
+        f"/conversations/{group['id']}/avatar",
+        files={"file": ("group.png", PNG_BYTES, "image/png")},
+        headers=auth_headers(alice),
+    )
+    avatar_id = resp.json()["avatar_media_id"]
+
+    resp = client.get(f"/media/{avatar_id}", headers=auth_headers(bob))
+    assert resp.status_code == 200
+    assert resp.content == PNG_BYTES
+
+    # Group avatars are member-scoped, unlike user avatars.
+    resp = client.get(f"/media/{avatar_id}", headers=auth_headers(stranger))
+    assert resp.status_code == 404
+
+
+def test_admin_can_delete_group_avatar(client):
+    alice = signup(client, display_name="Alice")
+    group = _make_group(client, alice, [])
+    client.post(
+        f"/conversations/{group['id']}/avatar",
+        files={"file": ("group.png", PNG_BYTES, "image/png")},
+        headers=auth_headers(alice),
+    )
+
+    resp = client.delete(f"/conversations/{group['id']}/avatar", headers=auth_headers(alice))
+    assert resp.status_code == 200
+    assert resp.json()["avatar_media_id"] is None
