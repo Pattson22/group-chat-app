@@ -4,17 +4,16 @@ import uuid
 from collections import deque
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import db as db_layer
 from app.auth.deps import get_current_user_ws
 from app.auth.routes import router as auth_router
 from app.config import settings
 from app.conversations.deps import get_conversation_for_user_id, get_member_user_ids
 from app.conversations.routes import router as conversations_router
-from app.db import get_db
 from app.media.policy import ALLOWED_CONTENT_TYPES
 from app.media.routes import router as media_router
 from app.messages.routes import router as messages_router
@@ -46,8 +45,15 @@ async def get():
 
 
 @app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket, db: AsyncSession = Depends(get_db)):
-    user = await get_current_user_ws(websocket, db)
+async def websocket_endpoint(websocket: WebSocket):
+    # DB sessions are opened per frame, not per connection: a chat socket
+    # can stay open for hours, and one connection-lifetime session (the old
+    # Depends(get_db) approach) accumulates identity-map state and serves
+    # stale rows for as long as the socket lives.
+    # db_layer is accessed via module attribute (not a from-import of the
+    # factory) so the test suite's factory swap in conftest.py is seen here.
+    async with db_layer.async_session_factory() as db:
+        user = await get_current_user_ws(websocket, db)
     if user is None:
         # Closing before accept() would surface as a generic HTTP 403 at
         # the handshake instead of a real WS close frame, so accept first
@@ -72,66 +78,18 @@ async def websocket_endpoint(websocket: WebSocket, db: AsyncSession = Depends(ge
                 continue
 
             # Call signaling payloads have no conversation_id key, so this
-            # branch must run before the conversation_id parse below.
+            # branch must run before the conversation_id parse below. It is
+            # also exempt from the chat rate limit -- ICE candidates burst
+            # far faster than any human types.
             action = payload.get("action")
             if isinstance(action, str) and action.startswith("call:"):
-                await call_manager.handle_call_action(action, payload, user, db, manager)
-                continue
-
-            try:
-                conversation_id = uuid.UUID(payload["conversation_id"])
-            except (KeyError, ValueError, TypeError, AttributeError):
-                await manager.send_personal_message(
-                    json.dumps({"type": "system", "text": "Malformed message"}), websocket
-                )
-                continue
-
-            # A message is either text ({"text": "..."}) or a reference to
-            # a file/image the sender already uploaded via POST /media/upload
-            # ({"media_id": "..."}).
-            media_id_raw = payload.get("media_id")
-            text_body = payload.get("text")
-
-            if media_id_raw is not None:
-                try:
-                    media_id = uuid.UUID(media_id_raw)
-                except (ValueError, TypeError, AttributeError):
-                    await manager.send_personal_message(
-                        json.dumps({"type": "system", "text": "Malformed message"}), websocket
-                    )
-                    continue
-
-                media = await db.get(Media, media_id)
-                if media is None or media.uploader_id != user.id:
-                    await manager.send_personal_message(
-                        json.dumps({"type": "system", "text": "Invalid media reference"}), websocket
-                    )
-                    continue
-
-                msg_type = ALLOWED_CONTENT_TYPES.get(media.content_type, "file")
-                msg_body = None
-                msg_media_id = media.id
-            elif isinstance(text_body, str) and text_body.strip():
-                if len(text_body) > settings.message_max_length:
-                    await manager.send_personal_message(
-                        json.dumps(
-                            {"type": "system", "text": f"Message too long (max {settings.message_max_length} characters)"}
-                        ),
-                        websocket,
-                    )
-                    continue
-                msg_type = "text"
-                msg_body = text_body
-                msg_media_id = None
-            else:
-                await manager.send_personal_message(
-                    json.dumps({"type": "system", "text": "Message must include non-empty text or a media_id"}),
-                    websocket,
-                )
+                async with db_layer.async_session_factory() as db:
+                    await call_manager.handle_call_action(action, payload, user, db, manager)
                 continue
 
             # Rate limit: drop messages once a client exceeds
-            # rate_limit_messages within rate_limit_window_seconds.
+            # rate_limit_messages within rate_limit_window_seconds. Checked
+            # before opening a DB session so a flooding client costs none.
             send_time = time.monotonic()
             while message_times and send_time - message_times[0] > settings.rate_limit_window_seconds:
                 message_times.popleft()
@@ -139,23 +97,78 @@ async def websocket_endpoint(websocket: WebSocket, db: AsyncSession = Depends(ge
                 warning = json.dumps({"type": "system", "text": "You're sending messages too fast. Please slow down."})
                 await manager.send_personal_message(warning, websocket)
                 continue
-            message_times.append(send_time)
 
-            # Authorization boundary: only conversation members may post
-            # to (or receive broadcasts targeting) a conversation_id.
-            conversation = await get_conversation_for_user_id(db, conversation_id, user.id)
-            if conversation is None:
-                await manager.send_personal_message(
-                    json.dumps({"type": "system", "text": "You are not a member of that conversation"}), websocket
-                )
-                continue
+            async with db_layer.async_session_factory() as db:
+                try:
+                    conversation_id = uuid.UUID(payload["conversation_id"])
+                except (KeyError, ValueError, TypeError, AttributeError):
+                    await manager.send_personal_message(
+                        json.dumps({"type": "system", "text": "Malformed message"}), websocket
+                    )
+                    continue
 
-            message = await create_message(db, conversation, user.id, body=msg_body, type=msg_type, media_id=msg_media_id)
-            member_ids = await get_member_user_ids(db, conversation.id)
+                # A message is either text ({"text": "..."}) or a reference to
+                # a file/image the sender already uploaded via POST /media/upload
+                # ({"media_id": "..."}).
+                media_id_raw = payload.get("media_id")
+                text_body = payload.get("text")
+
+                if media_id_raw is not None:
+                    try:
+                        media_id = uuid.UUID(media_id_raw)
+                    except (ValueError, TypeError, AttributeError):
+                        await manager.send_personal_message(
+                            json.dumps({"type": "system", "text": "Malformed message"}), websocket
+                        )
+                        continue
+
+                    media = await db.get(Media, media_id)
+                    if media is None or media.uploader_id != user.id:
+                        await manager.send_personal_message(
+                            json.dumps({"type": "system", "text": "Invalid media reference"}), websocket
+                        )
+                        continue
+
+                    msg_type = ALLOWED_CONTENT_TYPES.get(media.content_type, "file")
+                    msg_body = None
+                    msg_media_id = media.id
+                elif isinstance(text_body, str) and text_body.strip():
+                    if len(text_body) > settings.message_max_length:
+                        await manager.send_personal_message(
+                            json.dumps(
+                                {"type": "system", "text": f"Message too long (max {settings.message_max_length} characters)"}
+                            ),
+                            websocket,
+                        )
+                        continue
+                    msg_type = "text"
+                    msg_body = text_body
+                    msg_media_id = None
+                else:
+                    await manager.send_personal_message(
+                        json.dumps({"type": "system", "text": "Message must include non-empty text or a media_id"}),
+                        websocket,
+                    )
+                    continue
+
+                message_times.append(send_time)
+
+                # Authorization boundary: only conversation members may post
+                # to (or receive broadcasts targeting) a conversation_id.
+                conversation = await get_conversation_for_user_id(db, conversation_id, user.id)
+                if conversation is None:
+                    await manager.send_personal_message(
+                        json.dumps({"type": "system", "text": "You are not a member of that conversation"}), websocket
+                    )
+                    continue
+
+                message = await create_message(db, conversation, user.id, body=msg_body, type=msg_type, media_id=msg_media_id)
+                member_ids = await get_member_user_ids(db, conversation.id)
 
             event = {"type": "message", "message": MessageOut.model_validate(message).model_dump(mode="json")}
             await manager.broadcast_to_users(json.dumps(event), member_ids)
 
     except WebSocketDisconnect:
         manager.disconnect(websocket, user.id)
-        await call_manager.handle_user_disconnected(user.id, db, manager)
+        async with db_layer.async_session_factory() as db:
+            await call_manager.handle_user_disconnected(user.id, db, manager)
