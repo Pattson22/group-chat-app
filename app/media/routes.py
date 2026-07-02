@@ -20,9 +20,7 @@ async def upload_media(
     db: AsyncSession = Depends(get_db),
 ):
     if file.content_type not in ALLOWED_CONTENT_TYPES:
-        raise HTTPException(
-            status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, f"Unsupported content type: {file.content_type}"
-        )
+        raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, f"Unsupported content type: {file.content_type}")
 
     data = await file.read()
     if not data:
@@ -54,7 +52,7 @@ async def download_media(media: Media = Depends(get_media_for_user)):
     try:
         data = await storage.read(media.storage_key)
     except FileNotFoundError:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Media not found")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Media not found") from None
     return Response(
         content=data,
         media_type=media.content_type,

@@ -143,7 +143,10 @@ async def websocket_endpoint(websocket: WebSocket):
                     if len(text_body) > settings.message_max_length:
                         await manager.send_personal_message(
                             json.dumps(
-                                {"type": "system", "text": f"Message too long (max {settings.message_max_length} characters)"}
+                                {
+                                    "type": "system",
+                                    "text": f"Message too long (max {settings.message_max_length} characters)",
+                                }
                             ),
                             websocket,
                         )
@@ -169,7 +172,9 @@ async def websocket_endpoint(websocket: WebSocket):
                     )
                     continue
 
-                message = await create_message(db, conversation, user.id, body=msg_body, type=msg_type, media_id=msg_media_id)
+                message = await create_message(
+                    db, conversation, user.id, body=msg_body, type=msg_type, media_id=msg_media_id
+                )
                 member_ids = await get_member_user_ids(db, conversation.id)
 
             event = {"type": "message", "message": MessageOut.model_validate(message).model_dump(mode="json")}

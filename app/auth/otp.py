@@ -42,9 +42,7 @@ class DevOtpProvider(OtpProvider):
 
     async def start_verification(self, phone_number: str) -> str | None:
         code = f"{random.randint(0, 999999):06d}"
-        self._pending[phone_number] = _PendingCode(
-            code=code, expires_at=time.monotonic() + settings.otp_ttl_seconds
-        )
+        self._pending[phone_number] = _PendingCode(code=code, expires_at=time.monotonic() + settings.otp_ttl_seconds)
         logger.warning("DEV OTP for %s: %s (expires in %ss)", phone_number, code, settings.otp_ttl_seconds)
         return code
 
@@ -80,8 +78,9 @@ class TwilioOtpProvider(OtpProvider):
         import anyio
 
         await anyio.to_thread.run_sync(
-            lambda: self._client.verify.v2.services(self._service_sid)
-            .verifications.create(to=phone_number, channel="sms")
+            lambda: self._client.verify.v2.services(self._service_sid).verifications.create(
+                to=phone_number, channel="sms"
+            )
         )
         return None
 
@@ -89,8 +88,9 @@ class TwilioOtpProvider(OtpProvider):
         import anyio
 
         result = await anyio.to_thread.run_sync(
-            lambda: self._client.verify.v2.services(self._service_sid)
-            .verification_checks.create(to=phone_number, code=code)
+            lambda: self._client.verify.v2.services(self._service_sid).verification_checks.create(
+                to=phone_number, code=code
+            )
         )
         return result.status == "approved"
 

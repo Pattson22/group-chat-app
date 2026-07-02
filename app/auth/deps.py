@@ -19,7 +19,7 @@ async def get_current_user(
     try:
         user_id = decode_access_token(credentials.credentials)
     except jwt.PyJWTError:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token") from None
 
     user = await db.get(User, user_id)
     if user is None:

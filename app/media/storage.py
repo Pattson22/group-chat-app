@@ -14,8 +14,7 @@ class Storage(ABC):
         ...
 
     @abstractmethod
-    async def read(self, storage_key: str) -> bytes:
-        ...
+    async def read(self, storage_key: str) -> bytes: ...
 
 
 class LocalDiskStorage(Storage):

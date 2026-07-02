@@ -1,5 +1,4 @@
 from app.config import settings
-
 from tests.helpers import auth_headers, signup, unique_phone
 
 

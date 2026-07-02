@@ -36,9 +36,7 @@ async def _get_dm_by_key(db: AsyncSession, dm_key: str) -> Conversation | None:
     return result.scalar_one_or_none()
 
 
-async def _serialize_conversations(
-    db: AsyncSession, conversations: Sequence[Conversation]
-) -> list[ConversationOut]:
+async def _serialize_conversations(db: AsyncSession, conversations: Sequence[Conversation]) -> list[ConversationOut]:
     """Serializes with a fixed query count: members and last-message
     previews are each fetched in one batch across all conversations, so
     the list endpoint doesn't grow a query per conversation."""
@@ -248,9 +246,7 @@ async def upload_group_avatar(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "DMs cannot have their own avatar")
 
     if file.content_type not in AVATAR_CONTENT_TYPES:
-        raise HTTPException(
-            status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, f"Unsupported content type: {file.content_type}"
-        )
+        raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, f"Unsupported content type: {file.content_type}")
 
     data = await file.read()
     if not data:

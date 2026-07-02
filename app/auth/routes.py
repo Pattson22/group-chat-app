@@ -145,9 +145,7 @@ async def upload_avatar(
     db: AsyncSession = Depends(get_db),
 ):
     if file.content_type not in AVATAR_CONTENT_TYPES:
-        raise HTTPException(
-            status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, f"Unsupported content type: {file.content_type}"
-        )
+        raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, f"Unsupported content type: {file.content_type}")
 
     data = await file.read()
     if not data:

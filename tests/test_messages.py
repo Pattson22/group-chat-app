@@ -1,5 +1,4 @@
 from app.config import settings
-
 from tests.helpers import auth_headers, signup
 
 
@@ -64,9 +63,7 @@ def test_pagination_before_cursor(client):
     conv_id = _make_dm(client, alice, bob)
 
     for i in range(5):
-        resp = client.post(
-            f"/conversations/{conv_id}/messages", json={"body": f"msg {i}"}, headers=auth_headers(alice)
-        )
+        resp = client.post(f"/conversations/{conv_id}/messages", json={"body": f"msg {i}"}, headers=auth_headers(alice))
         assert resp.status_code == 201
 
     resp = client.get(f"/conversations/{conv_id}/messages?limit=2", headers=auth_headers(alice))

@@ -26,9 +26,13 @@ alembic revision --autogenerate -m "description"
 python -m pytest
 python -m pytest tests/test_messages.py                 # one file
 python -m pytest tests/test_auth.py -k refresh          # by keyword
+
+# Lint + format (config in ruff.toml; CI enforces both)
+ruff check app tests alembic/env.py
+ruff format app tests alembic/env.py
 ```
 
-Dev deps: `pip install -r requirements-dev.txt`. There is no linter or formatter configured.
+Dev deps: `pip install -r requirements-dev.txt`. Direct dependencies are listed in `requirements.in`; `requirements.txt` is the pinned lock — update both when adding a dependency. CI (`.github/workflows/ci.yml`) runs ruff and the full suite against a Postgres service on every push/PR.
 
 ## Architecture
 

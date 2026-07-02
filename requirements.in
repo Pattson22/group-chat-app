@@ -1,0 +1,20 @@
+# Direct dependencies only. requirements.txt is the fully-pinned lock
+# (transitive deps included) actually installed in dev/CI/prod; after
+# changing this file, reinstall into a fresh venv and regenerate it with
+# `pip freeze > requirements.txt` (or use pip-tools' pip-compile).
+#
+# NOTE: enabling STORAGE_BACKEND=s3 additionally requires boto3 (imported
+# lazily by app/media/storage.py, deliberately not installed by default).
+
+alembic
+asyncpg
+fastapi
+phonenumbers
+pydantic
+pydantic-settings
+PyJWT
+python-multipart
+SQLAlchemy[asyncio]
+twilio
+uvicorn
+websockets

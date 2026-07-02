@@ -1,5 +1,4 @@
 from app.config import settings
-
 from tests.helpers import auth_headers, signup
 
 PNG_BYTES = bytes.fromhex(
@@ -36,9 +35,7 @@ def test_upload_avatar_rejects_non_image(client):
 
 def test_upload_avatar_rejects_empty_file(client):
     alice = signup(client, display_name="Alice")
-    resp = client.post(
-        "/auth/me/avatar", files={"file": ("me.png", b"", "image/png")}, headers=auth_headers(alice)
-    )
+    resp = client.post("/auth/me/avatar", files={"file": ("me.png", b"", "image/png")}, headers=auth_headers(alice))
     assert resp.status_code == 400
 
 
@@ -110,9 +107,7 @@ def test_anonymous_user_cannot_fetch_avatar(client):
 def test_conversation_members_include_avatar_media_id(client):
     alice = signup(client, display_name="Alice")
     bob = signup(client, display_name="Bob")
-    client.post(
-        "/auth/me/avatar", files={"file": ("me.png", PNG_BYTES, "image/png")}, headers=auth_headers(alice)
-    )
+    client.post("/auth/me/avatar", files={"file": ("me.png", PNG_BYTES, "image/png")}, headers=auth_headers(alice))
 
     resp = client.post("/conversations/dm", json={"other_user_id": bob["user"]["id"]}, headers=auth_headers(alice))
     members = resp.json()["members"]

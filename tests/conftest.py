@@ -5,9 +5,7 @@ import os
 # when app.config.settings is constructed at first import. Pointing at a
 # dedicated database means the suite never touches whatever the developer
 # has running in the normal "group_chat" dev database.
-os.environ.setdefault(
-    "DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/group_chat_test"
-)
+os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/group_chat_test")
 
 import pytest
 from sqlalchemy import text

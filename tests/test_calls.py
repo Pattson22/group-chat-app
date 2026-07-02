@@ -1,7 +1,6 @@
 from contextlib import ExitStack
 
 from app.config import settings
-
 from tests.helpers import auth_headers, signup, ws_connect
 
 
@@ -140,9 +139,7 @@ def test_cap_exceeded_returns_call_full(client):
 
     with ExitStack() as stack:
         ws_alice = stack.enter_context(ws_connect(client, alice))
-        ws_invitees = [
-            stack.enter_context(ws_connect(client, u)) for u in invitees
-        ]
+        ws_invitees = [stack.enter_context(ws_connect(client, u)) for u in invitees]
 
         ws_alice.send_json({"action": "call:invite", "conversation_id": conv_id, "video": False})
         invited = ws_alice.receive_json()
@@ -160,7 +157,7 @@ def test_cap_exceeded_returns_call_full(client):
             joined = ws.receive_json()
             assert joined["action"] == "call:joined", f"invitee {i} should have joined"
             ws_alice.receive_json()  # call:participant-joined broadcast to alice
-            for other in ws_invitees[: i]:
+            for other in ws_invitees[:i]:
                 other.receive_json()  # call:participant-joined broadcast to earlier joiners
 
         last = ws_invitees[-1]

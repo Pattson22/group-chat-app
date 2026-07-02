@@ -1,5 +1,4 @@
 from app.config import settings
-
 from tests.helpers import auth_headers, signup, ws_connect
 
 
@@ -119,9 +118,7 @@ def test_rest_sent_message_broadcasts_to_connected_members(client):
     conv_id = _make_dm(client, alice, bob)
 
     with ws_connect(client, bob) as ws_bob:
-        resp = client.post(
-            f"/conversations/{conv_id}/messages", json={"body": "via rest"}, headers=auth_headers(alice)
-        )
+        resp = client.post(f"/conversations/{conv_id}/messages", json={"body": "via rest"}, headers=auth_headers(alice))
         assert resp.status_code == 201
 
         received = ws_bob.receive_json()

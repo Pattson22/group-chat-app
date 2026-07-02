@@ -154,9 +154,7 @@ def test_conversation_list_previews_stay_per_conversation(client):
     bob = signup(client, display_name="Bob")
     carol = signup(client, display_name="Carol")
 
-    dm = client.post(
-        "/conversations/dm", json={"other_user_id": bob["user"]["id"]}, headers=auth_headers(alice)
-    ).json()
+    dm = client.post("/conversations/dm", json={"other_user_id": bob["user"]["id"]}, headers=auth_headers(alice)).json()
     group = client.post(
         "/conversations/group",
         json={"name": "Trio", "member_ids": [bob["user"]["id"], carol["user"]["id"]]},

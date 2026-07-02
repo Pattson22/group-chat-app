@@ -23,7 +23,8 @@ async def lookup_user(
     normalized = normalize_phone_number(phone_number)
     if normalized is None:
         raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY, "Phone number must be a valid number in E.164 format, e.g. +15551234567"
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Phone number must be a valid number in E.164 format, e.g. +15551234567",
         )
 
     result = await db.execute(select(User).where(User.phone_number == normalized))

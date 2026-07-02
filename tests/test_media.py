@@ -1,5 +1,4 @@
 from app.config import settings
-
 from tests.helpers import auth_headers, signup, ws_connect
 
 # A minimal valid 1x1 PNG.

@@ -248,9 +248,7 @@ class CallManager:
             # is left to ring -- this call will never connect.
             caller_id = call.caller_id
             await manager.send_to_user(
-                json.dumps(
-                    {"type": "call", "action": "call:ended", "call_id": str(call.call_id), "outcome": "missed"}
-                ),
+                json.dumps({"type": "call", "action": "call:ended", "call_id": str(call.call_id), "outcome": "missed"}),
                 caller_id,
             )
             call.participants.discard(caller_id)
