@@ -110,8 +110,6 @@ class MessageOut(BaseModel):
     call_video: bool | None = None
     call_duration_seconds: int | None = None
     created_at: datetime
-    edited_at: datetime | None = None
-    deleted_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

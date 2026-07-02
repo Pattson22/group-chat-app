@@ -31,7 +31,6 @@ class User(Base):
         nullable=True,
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class OtpRequest(Base):
@@ -129,8 +128,6 @@ class Message(Base):
     call_video: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     call_duration_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    edited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class ConversationMember(Base):
@@ -142,6 +139,3 @@ class ConversationMember(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), primary_key=True)
     role: Mapped[str] = mapped_column(Enum("member", "admin", name="member_role"), nullable=False, default="member")
     joined_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    last_read_message_id: Mapped[int | None] = mapped_column(
-        BigInteger, ForeignKey("messages.id"), nullable=True
-    )
