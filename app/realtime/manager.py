@@ -65,3 +65,8 @@ class ConnectionManager:
     async def broadcast_to_users(self, message: str, user_ids: List[uuid.UUID]):
         for user_id in user_ids:
             await self.send_to_user(message, user_id)
+
+
+# Process-wide singleton, defined here (not in app.main) so REST endpoints
+# that push realtime events can import it without a circular import.
+manager = ConnectionManager()

@@ -1,13 +1,16 @@
+import json
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.deps import get_current_user
 from app.config import settings
-from app.conversations.deps import get_conversation_for_member
+from app.conversations.deps import get_conversation_for_member, get_member_user_ids
 from app.db import get_db
 from app.messages.service import create_message
 from app.models import Conversation, Message, User
+from app.realtime.manager import manager
 from app.schemas import MessageOut, MessagePage, SendMessageIn
 
 router = APIRouter(prefix="/conversations", tags=["messages"])
@@ -28,7 +31,14 @@ async def send_message(
         )
 
     message = await create_message(db, conversation, current_user.id, payload.body)
-    return MessageOut.model_validate(message)
+    message_out = MessageOut.model_validate(message)
+
+    # Same event the websocket path broadcasts, so members who are online
+    # see REST-sent messages live instead of on next page load.
+    event = {"type": "message", "message": message_out.model_dump(mode="json")}
+    await manager.broadcast_to_users(json.dumps(event), await get_member_user_ids(db, conversation.id))
+
+    return message_out
 
 
 @router.get("/{conversation_id}/messages", response_model=MessagePage)

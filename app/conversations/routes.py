@@ -3,6 +3,7 @@ from collections.abc import Sequence
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.deps import get_current_user
@@ -28,6 +29,11 @@ router = APIRouter(prefix="/conversations", tags=["conversations"])
 
 def make_dm_key(user_a: uuid.UUID, user_b: uuid.UUID) -> str:
     return ":".join(sorted([str(user_a), str(user_b)]))
+
+
+async def _get_dm_by_key(db: AsyncSession, dm_key: str) -> Conversation | None:
+    result = await db.execute(select(Conversation).where(Conversation.dm_key == dm_key))
+    return result.scalar_one_or_none()
 
 
 async def _serialize_conversations(
@@ -105,19 +111,27 @@ async def create_or_get_dm(
 
     dm_key = make_dm_key(current_user.id, other_user.id)
 
-    result = await db.execute(select(Conversation).where(Conversation.dm_key == dm_key))
-    conversation = result.scalar_one_or_none()
+    conversation = await _get_dm_by_key(db, dm_key)
     if conversation is None:
         conversation = Conversation(type="dm", dm_key=dm_key, created_by=current_user.id)
         db.add(conversation)
-        await db.flush()
-        db.add_all(
-            [
-                ConversationMember(conversation_id=conversation.id, user_id=current_user.id, role="member"),
-                ConversationMember(conversation_id=conversation.id, user_id=other_user.id, role="member"),
-            ]
-        )
-        await db.commit()
+        try:
+            await db.flush()
+            db.add_all(
+                [
+                    ConversationMember(conversation_id=conversation.id, user_id=current_user.id, role="member"),
+                    ConversationMember(conversation_id=conversation.id, user_id=other_user.id, role="member"),
+                ]
+            )
+            await db.commit()
+        except IntegrityError:
+            # Lost a find-or-create race: a concurrent request inserted the
+            # same dm_key between our select and our insert. The unique
+            # constraint guarantees the winner's row exists, so use it.
+            await db.rollback()
+            conversation = await _get_dm_by_key(db, dm_key)
+            if conversation is None:
+                raise
 
     return await _serialize_conversation(db, conversation)
 

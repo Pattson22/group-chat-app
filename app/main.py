@@ -21,7 +21,7 @@ from app.messages.routes import router as messages_router
 from app.messages.service import create_message
 from app.models import Media
 from app.realtime.calls import CallManager
-from app.realtime.manager import ConnectionManager
+from app.realtime.manager import manager
 from app.schemas import MessageOut
 from app.users.routes import router as users_router
 
@@ -36,7 +36,6 @@ FRONTEND_DIR = Path(__file__).parent / "frontend"
 app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
 
 
-manager = ConnectionManager()
 call_manager = CallManager()
 
 

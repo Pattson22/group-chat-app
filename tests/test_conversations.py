@@ -184,3 +184,34 @@ def test_conversation_list_previews_stay_per_conversation(client):
         bob["user"]["id"],
         carol["user"]["id"],
     }
+
+
+def test_create_dm_race_falls_back_to_winner(client, monkeypatch):
+    # Simulates losing the find-or-create race: the DM already exists in the
+    # database, but the route's initial lookup reports it doesn't (exactly
+    # what a concurrent request committing between select and insert looks
+    # like). The insert must then hit the dm_key unique constraint and
+    # recover by returning the winner's row instead of a 500.
+    import app.conversations.routes as conv_routes
+
+    alice = signup(client, display_name="Alice")
+    bob = signup(client, display_name="Bob")
+    existing = client.post(
+        "/conversations/dm", json={"other_user_id": bob["user"]["id"]}, headers=auth_headers(alice)
+    ).json()
+
+    real_get = conv_routes._get_dm_by_key
+    lookups = []
+
+    async def get_dm_missing_first(db, dm_key):
+        lookups.append(dm_key)
+        if len(lookups) == 1:
+            return None
+        return await real_get(db, dm_key)
+
+    monkeypatch.setattr(conv_routes, "_get_dm_by_key", get_dm_missing_first)
+
+    resp = client.post("/conversations/dm", json={"other_user_id": bob["user"]["id"]}, headers=auth_headers(alice))
+    assert resp.status_code == 200
+    assert resp.json()["id"] == existing["id"]
+    assert len(lookups) == 2  # initial miss + post-IntegrityError recovery

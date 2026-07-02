@@ -101,3 +101,21 @@ def test_rate_limit_drops_excess_messages(client):
     bodies = [m["body"] for m in resp.json()["items"]]
     assert "one too many" not in bodies
     assert len(bodies) == settings.rate_limit_messages
+
+
+def test_rest_sent_message_broadcasts_to_connected_members(client):
+    alice = signup(client, display_name="Alice")
+    bob = signup(client, display_name="Bob")
+    conv_id = _make_dm(client, alice, bob)
+
+    with client.websocket_connect(f"/ws?token={bob['access_token']}") as ws_bob:
+        resp = client.post(
+            f"/conversations/{conv_id}/messages", json={"body": "via rest"}, headers=auth_headers(alice)
+        )
+        assert resp.status_code == 201
+
+        received = ws_bob.receive_json()
+        assert received["type"] == "message"
+        assert received["message"]["body"] == "via rest"
+        assert received["message"]["sender_id"] == alice["user"]["id"]
+        assert received["message"]["conversation_id"] == conv_id
