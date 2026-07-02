@@ -1,6 +1,6 @@
 from app.config import settings
 
-from tests.helpers import auth_headers, signup
+from tests.helpers import auth_headers, signup, ws_connect
 
 # A minimal valid 1x1 PNG.
 PNG_BYTES = bytes.fromhex(
@@ -91,7 +91,7 @@ def test_non_member_cannot_download_media_referenced_in_conversation(client):
     # Media messages are websocket-only (see test_realtime.py for the
     # happy-path send/receive) -- reference the upload in a real message
     # here so this test can check the *access-control* boundary.
-    with client.websocket_connect(f"/ws?token={alice['access_token']}") as ws_alice:
+    with ws_connect(client, alice) as ws_alice:
         ws_alice.send_json({"conversation_id": conv_id, "media_id": media_id})
         ws_alice.receive_json()
 
@@ -111,8 +111,8 @@ def test_member_can_download_media_after_ws_message_sent(client):
     )
     media_id = resp.json()["id"]
 
-    with client.websocket_connect(f"/ws?token={alice['access_token']}") as ws_alice:
-        with client.websocket_connect(f"/ws?token={bob['access_token']}") as ws_bob:
+    with ws_connect(client, alice) as ws_alice:
+        with ws_connect(client, bob) as ws_bob:
             ws_alice.send_json({"conversation_id": conv_id, "media_id": media_id})
             ws_alice.receive_json()
             ws_bob.receive_json()

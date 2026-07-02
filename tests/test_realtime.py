@@ -1,6 +1,6 @@
 from app.config import settings
 
-from tests.helpers import auth_headers, signup
+from tests.helpers import auth_headers, signup, ws_connect
 
 
 def _make_dm(client, alice, bob):
@@ -11,15 +11,25 @@ def _make_dm(client, alice, bob):
 
 def test_websocket_requires_token(client):
     with client.websocket_connect("/ws") as ws:
-        # No token query param -> the server accepts (to send a real close
-        # frame rather than a bare HTTP 403) then immediately closes 4401.
+        # No bearer subprotocol offer -> the server accepts (to send a real
+        # close frame rather than a bare HTTP 403) then immediately closes 4401.
         data = ws.receive()
         assert data["type"] == "websocket.close"
         assert data["code"] == 4401
 
 
 def test_websocket_rejects_garbage_token(client):
-    with client.websocket_connect("/ws?token=not-a-real-token") as ws:
+    with client.websocket_connect("/ws", subprotocols=["bearer", "not-a-real-token"]) as ws:
+        data = ws.receive()
+        assert data["type"] == "websocket.close"
+        assert data["code"] == 4401
+
+
+def test_websocket_ignores_token_in_query_string(client):
+    # The query-param auth path was removed deliberately (tokens in URLs
+    # end up in access logs); a token there must not authenticate.
+    alice = signup(client, display_name="Alice")
+    with client.websocket_connect(f"/ws?token={alice['access_token']}") as ws:
         data = ws.receive()
         assert data["type"] == "websocket.close"
         assert data["code"] == 4401
@@ -30,8 +40,8 @@ def test_send_and_receive_text_message(client):
     bob = signup(client, display_name="Bob")
     conv_id = _make_dm(client, alice, bob)
 
-    with client.websocket_connect(f"/ws?token={alice['access_token']}") as ws_alice:
-        with client.websocket_connect(f"/ws?token={bob['access_token']}") as ws_bob:
+    with ws_connect(client, alice) as ws_alice:
+        with ws_connect(client, bob) as ws_bob:
             ws_alice.send_json({"conversation_id": conv_id, "text": "hello bob"})
 
             # broadcast_to_users fans out to every member, sender included.
@@ -47,7 +57,7 @@ def test_send_and_receive_text_message(client):
 
 def test_malformed_json_gets_system_error(client):
     alice = signup(client, display_name="Alice")
-    with client.websocket_connect(f"/ws?token={alice['access_token']}") as ws:
+    with ws_connect(client, alice) as ws:
         ws.send_text("{not valid json")
         data = ws.receive_json()
         assert data["type"] == "system"
@@ -60,7 +70,7 @@ def test_non_member_cannot_send_to_conversation(client):
     stranger = signup(client, display_name="Stranger")
     conv_id = _make_dm(client, alice, bob)
 
-    with client.websocket_connect(f"/ws?token={stranger['access_token']}") as ws:
+    with ws_connect(client, stranger) as ws:
         ws.send_json({"conversation_id": conv_id, "text": "sneaky"})
         data = ws.receive_json()
         assert data["type"] == "system"
@@ -72,7 +82,7 @@ def test_empty_text_and_missing_media_id_rejected(client):
     bob = signup(client, display_name="Bob")
     conv_id = _make_dm(client, alice, bob)
 
-    with client.websocket_connect(f"/ws?token={alice['access_token']}") as ws:
+    with ws_connect(client, alice) as ws:
         ws.send_json({"conversation_id": conv_id, "text": "   "})
         data = ws.receive_json()
         assert data["type"] == "system"
@@ -84,7 +94,7 @@ def test_rate_limit_drops_excess_messages(client):
     bob = signup(client, display_name="Bob")
     conv_id = _make_dm(client, alice, bob)
 
-    with client.websocket_connect(f"/ws?token={alice['access_token']}") as ws:
+    with ws_connect(client, alice) as ws:
         for i in range(settings.rate_limit_messages):
             ws.send_json({"conversation_id": conv_id, "text": f"msg {i}"})
             data = ws.receive_json()
@@ -108,7 +118,7 @@ def test_rest_sent_message_broadcasts_to_connected_members(client):
     bob = signup(client, display_name="Bob")
     conv_id = _make_dm(client, alice, bob)
 
-    with client.websocket_connect(f"/ws?token={bob['access_token']}") as ws_bob:
+    with ws_connect(client, bob) as ws_bob:
         resp = client.post(
             f"/conversations/{conv_id}/messages", json={"body": "via rest"}, headers=auth_headers(alice)
         )

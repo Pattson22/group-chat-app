@@ -11,6 +11,12 @@ def auth_headers(tokens: dict) -> dict:
     return {"Authorization": f"Bearer {tokens['access_token']}"}
 
 
+def ws_connect(client, tokens: dict):
+    """Opens an authenticated websocket. Auth rides in the subprotocol
+    offer (["bearer", <token>]), not the URL."""
+    return client.websocket_connect("/ws", subprotocols=["bearer", tokens["access_token"]])
+
+
 def signup(client, phone: str | None = None, display_name: str | None = "Test User") -> dict:
     """Full phone+OTP signup flow against the dev OTP provider, optionally
     setting a display name. Returns the token/user payload plus the phone

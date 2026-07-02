@@ -36,7 +36,7 @@ Feature-package layout under `app/`: each of `auth/`, `conversations/`, `message
 
 ### Realtime — the core flow
 
-Everything realtime goes over one websocket endpoint, `/ws` in `app/main.py`, authenticated via a `token` query param (`get_current_user_ws`). The handler dispatches inline:
+Everything realtime goes over one websocket endpoint, `/ws` in `app/main.py`, authenticated via a `["bearer", <token>]` subprotocol offer (`get_current_user_ws`; tokens deliberately never ride in the URL). The handler dispatches inline:
 
 - Payloads with `action: "call:*"` go to `CallManager` (`app/realtime/calls.py`) — WebRTC signaling and call lifecycle (ring/join/leave/end, logging a `call` message with outcome/duration on end).
 - Payloads with `conversation_id` + (`text` | `media_id`) create a message via `app/messages/service.py` and broadcast it to all conversation members through `ConnectionManager` (`app/realtime/manager.py`).

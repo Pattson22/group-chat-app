@@ -308,7 +308,9 @@ function connectWs() {
         ws.close();
     }
     const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
-    ws = new WebSocket(`${protocol}://${location.host}/ws?token=${encodeURIComponent(session.accessToken)}`);
+    // The token rides in the subprotocol offer instead of the URL so it
+    // never shows up in proxy/server access logs.
+    ws = new WebSocket(`${protocol}://${location.host}/ws`, ['bearer', session.accessToken]);
 
     ws.onmessage = (event) => {
         const data = JSON.parse(event.data);

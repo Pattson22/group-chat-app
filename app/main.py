@@ -54,15 +54,22 @@ async def websocket_endpoint(websocket: WebSocket):
     # factory) so the test suite's factory swap in conftest.py is seen here.
     async with db_layer.async_session_factory() as db:
         user = await get_current_user_ws(websocket, db)
+
+    # Auth rides in the subprotocol offer (["bearer", <token>]); the server
+    # must select "bearer" back whenever it was offered, or browsers abort
+    # the connection before any close code is readable.
+    offered = [p.strip() for p in websocket.headers.get("sec-websocket-protocol", "").split(",") if p.strip()]
+    subprotocol = "bearer" if "bearer" in offered else None
+
     if user is None:
         # Closing before accept() would surface as a generic HTTP 403 at
         # the handshake instead of a real WS close frame, so accept first
         # and immediately close with a distinguishable app-level code.
-        await websocket.accept()
+        await websocket.accept(subprotocol=subprotocol)
         await websocket.close(code=4401)
         return
 
-    await manager.connect(websocket, user.id)
+    await manager.connect(websocket, user.id, subprotocol=subprotocol)
     message_times = deque()
 
     try:

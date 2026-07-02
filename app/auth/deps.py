@@ -27,14 +27,25 @@ async def get_current_user(
     return user
 
 
-async def get_current_user_ws(websocket: WebSocket, db: AsyncSession) -> User | None:
-    """Authenticate a websocket connection via a `token` query param.
+def ws_bearer_token(websocket: WebSocket) -> str | None:
+    """Extracts the access token from a `["bearer", <token>]` subprotocol
+    offer. The token rides in the Sec-WebSocket-Protocol header rather than
+    a query param so it never lands in proxy/server access logs. (JWTs are
+    base64url + dots, all valid subprotocol token characters.)"""
+    header = websocket.headers.get("sec-websocket-protocol", "")
+    protocols = [p.strip() for p in header.split(",") if p.strip()]
+    if len(protocols) == 2 and protocols[0] == "bearer":
+        return protocols[1]
+    return None
 
-    Not wired into any route yet -- the realtime layer adopts this in
-    Phase 3. Returns None if the token is missing/invalid/unrecognized;
-    callers should close the connection (e.g. with code 4401) in that case.
+
+async def get_current_user_ws(websocket: WebSocket, db: AsyncSession) -> User | None:
+    """Authenticate a websocket connection via the bearer subprotocol.
+
+    Returns None if the token is missing/invalid/unrecognized; callers
+    should close the connection (e.g. with code 4401) in that case.
     """
-    token = websocket.query_params.get("token")
+    token = ws_bearer_token(websocket)
     if not token:
         return None
     try:

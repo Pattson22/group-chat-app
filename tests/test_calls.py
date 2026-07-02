@@ -2,7 +2,7 @@ from contextlib import ExitStack
 
 from app.config import settings
 
-from tests.helpers import auth_headers, signup
+from tests.helpers import auth_headers, signup, ws_connect
 
 
 def _make_dm(client, alice, bob):
@@ -30,8 +30,8 @@ def test_invite_accept_leave_logs_completed_call(client):
     bob = signup(client, display_name="Bob")
     conv_id = _make_dm(client, alice, bob)
 
-    with client.websocket_connect(f"/ws?token={alice['access_token']}") as ws_alice:
-        with client.websocket_connect(f"/ws?token={bob['access_token']}") as ws_bob:
+    with ws_connect(client, alice) as ws_alice:
+        with ws_connect(client, bob) as ws_bob:
             ws_alice.send_json({"action": "call:invite", "conversation_id": conv_id, "video": False})
 
             invited = ws_alice.receive_json()
@@ -82,8 +82,8 @@ def test_decline_logs_missed_call(client):
     bob = signup(client, display_name="Bob")
     conv_id = _make_dm(client, alice, bob)
 
-    with client.websocket_connect(f"/ws?token={alice['access_token']}") as ws_alice:
-        with client.websocket_connect(f"/ws?token={bob['access_token']}") as ws_bob:
+    with ws_connect(client, alice) as ws_alice:
+        with ws_connect(client, bob) as ws_bob:
             ws_alice.send_json({"action": "call:invite", "conversation_id": conv_id, "video": True})
             invited = ws_alice.receive_json()
             call_id = invited["call_id"]
@@ -122,7 +122,7 @@ def test_invite_reports_unreachable_offline_member(client):
     conv_id = _make_dm(client, alice, bob)
 
     # Bob never opens a websocket connection -- he's offline.
-    with client.websocket_connect(f"/ws?token={alice['access_token']}") as ws_alice:
+    with ws_connect(client, alice) as ws_alice:
         ws_alice.send_json({"action": "call:invite", "conversation_id": conv_id, "video": False})
         invited = ws_alice.receive_json()
         assert invited["action"] == "call:invited"
@@ -139,9 +139,9 @@ def test_cap_exceeded_returns_call_full(client):
     conv_id = _make_group(client, alice, [u["user"]["id"] for u in invitees])
 
     with ExitStack() as stack:
-        ws_alice = stack.enter_context(client.websocket_connect(f"/ws?token={alice['access_token']}"))
+        ws_alice = stack.enter_context(ws_connect(client, alice))
         ws_invitees = [
-            stack.enter_context(client.websocket_connect(f"/ws?token={u['access_token']}")) for u in invitees
+            stack.enter_context(ws_connect(client, u)) for u in invitees
         ]
 
         ws_alice.send_json({"action": "call:invite", "conversation_id": conv_id, "video": False})
@@ -175,8 +175,8 @@ def test_relay_requires_participant(client):
     bob = signup(client, display_name="Bob")
     conv_id = _make_dm(client, alice, bob)
 
-    with client.websocket_connect(f"/ws?token={alice['access_token']}") as ws_alice:
-        with client.websocket_connect(f"/ws?token={bob['access_token']}") as ws_bob:
+    with ws_connect(client, alice) as ws_alice:
+        with ws_connect(client, bob) as ws_bob:
             ws_alice.send_json({"action": "call:invite", "conversation_id": conv_id, "video": False})
             invited = ws_alice.receive_json()
             call_id = invited["call_id"]

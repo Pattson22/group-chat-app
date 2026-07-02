@@ -33,8 +33,8 @@ class ConnectionManager:
     def __init__(self):
         self.active_connections: Dict[uuid.UUID, List[WebSocket]] = {}
 
-    async def connect(self, websocket: WebSocket, user_id: uuid.UUID):
-        await websocket.accept()
+    async def connect(self, websocket: WebSocket, user_id: uuid.UUID, subprotocol: str | None = None):
+        await websocket.accept(subprotocol=subprotocol)
         self.active_connections.setdefault(user_id, []).append(websocket)
 
     def disconnect(self, websocket: WebSocket, user_id: uuid.UUID):
