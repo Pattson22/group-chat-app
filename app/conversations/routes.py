@@ -125,9 +125,7 @@ async def create_or_get_dm(
             )
             await db.commit()
         except IntegrityError:
-            # Lost a find-or-create race: a concurrent request inserted the
-            # same dm_key between our select and our insert. The unique
-            # constraint guarantees the winner's row exists, so use it.
+            # A concurrent request beat me to inserting this dm_key; use its row.
             await db.rollback()
             conversation = await _get_dm_by_key(db, dm_key)
             if conversation is None:
