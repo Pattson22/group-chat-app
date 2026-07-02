@@ -67,6 +67,20 @@ class ConversationMemberOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class MessagePreviewOut(BaseModel):
+    """Slim view of a conversation's newest message, just enough for the
+    sidebar preview line ("You: hey", "Photo", "Missed call"...)."""
+
+    sender_id: uuid.UUID
+    type: str
+    body: str | None = None
+    call_outcome: str | None = None
+    call_video: bool | None = None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class ConversationOut(BaseModel):
     id: uuid.UUID
     type: str
@@ -75,6 +89,7 @@ class ConversationOut(BaseModel):
     created_by: uuid.UUID
     created_at: datetime
     last_message_at: datetime | None = None
+    last_message: MessagePreviewOut | None = None
     members: list[ConversationMemberOut] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)

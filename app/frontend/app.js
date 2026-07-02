@@ -353,6 +353,9 @@ function updateConversationPreview(msg) {
         return;
     }
     conversations[idx].last_message_at = msg.created_at;
+    // The broadcast MessageOut is a superset of the preview shape, so it
+    // can stand in for last_message directly.
+    conversations[idx].last_message = msg;
     const [conv] = conversations.splice(idx, 1);
     conversations.unshift(conv);
     if (isViewVisible('view-main')) {
@@ -434,14 +437,33 @@ function conversationDisplayName(conv) {
     return other ? other.display_name || other.phone_number : 'You';
 }
 
-function conversationPreviewLabel(conv) {
-    // The API doesn't return last-message bodies with the conversation
-    // list, so the subtitle is descriptive rather than a message preview.
-    if (conv.type === 'group') {
-        return `Group · ${conv.members.length} members`;
+function memberDisplayName(conv, userId) {
+    const member = conv.members.find((m) => m.user_id === userId);
+    return member ? member.display_name || member.phone_number : 'Unknown';
+}
+
+function messagePreviewText(msg) {
+    if (msg.type === 'image') return 'Photo';
+    if (msg.type === 'file') return 'Attachment';
+    if (msg.type === 'call') {
+        if (msg.call_outcome === 'missed') return msg.call_video ? 'Missed video call' : 'Missed call';
+        return msg.call_video ? 'Video call' : 'Voice call';
     }
-    const other = conv.members.find((m) => m.user_id !== session.user.id);
-    return other ? other.phone_number : 'No messages yet';
+    return msg.body || '';
+}
+
+function conversationPreviewLabel(conv) {
+    const last = conv.last_message;
+    if (!last) {
+        return conv.type === 'group' ? `Group · ${conv.members.length} members` : 'No messages yet';
+    }
+    let prefix = '';
+    if (last.sender_id === session.user.id) {
+        prefix = 'You: ';
+    } else if (conv.type === 'group') {
+        prefix = `${memberDisplayName(conv, last.sender_id)}: `;
+    }
+    return prefix + messagePreviewText(last);
 }
 
 let conversationFilter = '';

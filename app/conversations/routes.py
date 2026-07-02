@@ -1,7 +1,8 @@
 import uuid
+from collections.abc import Sequence
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.deps import get_current_user
@@ -10,8 +11,15 @@ from app.conversations.deps import get_conversation_for_member, require_admin
 from app.db import get_db
 from app.media.policy import ALLOWED_CONTENT_TYPES
 from app.media.storage import storage
-from app.models import Conversation, ConversationMember, Media, User
-from app.schemas import AddMemberIn, ConversationMemberOut, ConversationOut, CreateDmIn, CreateGroupIn
+from app.models import Conversation, ConversationMember, Media, Message, User
+from app.schemas import (
+    AddMemberIn,
+    ConversationMemberOut,
+    ConversationOut,
+    CreateDmIn,
+    CreateGroupIn,
+    MessagePreviewOut,
+)
 
 AVATAR_CONTENT_TYPES = {ct for ct, category in ALLOWED_CONTENT_TYPES.items() if category == "image"}
 
@@ -22,33 +30,64 @@ def make_dm_key(user_a: uuid.UUID, user_b: uuid.UUID) -> str:
     return ":".join(sorted([str(user_a), str(user_b)]))
 
 
-async def _serialize_conversation(db: AsyncSession, conversation: Conversation) -> ConversationOut:
+async def _serialize_conversations(
+    db: AsyncSession, conversations: Sequence[Conversation]
+) -> list[ConversationOut]:
+    """Serializes with a fixed query count: members and last-message
+    previews are each fetched in one batch across all conversations, so
+    the list endpoint doesn't grow a query per conversation."""
+    if not conversations:
+        return []
+    conversation_ids = [c.id for c in conversations]
+
     result = await db.execute(
         select(ConversationMember, User)
         .join(User, User.id == ConversationMember.user_id)
-        .where(ConversationMember.conversation_id == conversation.id)
+        .where(ConversationMember.conversation_id.in_(conversation_ids))
     )
-    members = [
-        ConversationMemberOut(
-            user_id=member.user_id,
-            phone_number=user.phone_number,
-            display_name=user.display_name,
-            avatar_media_id=user.avatar_media_id,
-            role=member.role,
-            joined_at=member.joined_at,
+    members_by_conversation: dict[uuid.UUID, list[ConversationMemberOut]] = {cid: [] for cid in conversation_ids}
+    for member, user in result.all():
+        members_by_conversation[member.conversation_id].append(
+            ConversationMemberOut(
+                user_id=member.user_id,
+                phone_number=user.phone_number,
+                display_name=user.display_name,
+                avatar_media_id=user.avatar_media_id,
+                role=member.role,
+                joined_at=member.joined_at,
+            )
         )
-        for member, user in result.all()
-    ]
-    return ConversationOut(
-        id=conversation.id,
-        type=conversation.type,
-        name=conversation.name,
-        avatar_media_id=conversation.avatar_media_id,
-        created_by=conversation.created_by,
-        created_at=conversation.created_at,
-        last_message_at=conversation.last_message_at,
-        members=members,
+
+    latest_message_ids = (
+        select(func.max(Message.id))
+        .where(Message.conversation_id.in_(conversation_ids))
+        .group_by(Message.conversation_id)
     )
+    result = await db.execute(select(Message).where(Message.id.in_(latest_message_ids)))
+    last_message_by_conversation = {m.conversation_id: m for m in result.scalars().all()}
+
+    return [
+        ConversationOut(
+            id=c.id,
+            type=c.type,
+            name=c.name,
+            avatar_media_id=c.avatar_media_id,
+            created_by=c.created_by,
+            created_at=c.created_at,
+            last_message_at=c.last_message_at,
+            last_message=(
+                MessagePreviewOut.model_validate(last_message_by_conversation[c.id])
+                if c.id in last_message_by_conversation
+                else None
+            ),
+            members=members_by_conversation[c.id],
+        )
+        for c in conversations
+    ]
+
+
+async def _serialize_conversation(db: AsyncSession, conversation: Conversation) -> ConversationOut:
+    return (await _serialize_conversations(db, [conversation]))[0]
 
 
 @router.post("/dm", response_model=ConversationOut)
@@ -122,7 +161,7 @@ async def list_conversations(
         .order_by(Conversation.last_message_at.desc().nullslast(), Conversation.created_at.desc())
     )
     conversations = result.scalars().all()
-    return [await _serialize_conversation(db, c) for c in conversations]
+    return await _serialize_conversations(db, conversations)
 
 
 @router.get("/{conversation_id}", response_model=ConversationOut)

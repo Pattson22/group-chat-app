@@ -127,3 +127,60 @@ def test_add_member_to_dm_rejected(client):
         f"/conversations/{conv_id}/members", json={"user_id": carol["user"]["id"]}, headers=auth_headers(alice)
     )
     assert resp.status_code == 400
+
+
+def test_conversation_list_includes_last_message_preview(client):
+    alice = signup(client, display_name="Alice")
+    bob = signup(client, display_name="Bob")
+
+    resp = client.post("/conversations/dm", json={"other_user_id": bob["user"]["id"]}, headers=auth_headers(alice))
+    conv = resp.json()
+    assert conv["last_message"] is None
+
+    client.post(f"/conversations/{conv['id']}/messages", json={"body": "first"}, headers=auth_headers(alice))
+    client.post(f"/conversations/{conv['id']}/messages", json={"body": "second"}, headers=auth_headers(bob))
+
+    resp = client.get("/conversations", headers=auth_headers(alice))
+    listed = resp.json()[0]
+    assert listed["last_message"]["body"] == "second"
+    assert listed["last_message"]["type"] == "text"
+    assert listed["last_message"]["sender_id"] == bob["user"]["id"]
+
+
+def test_conversation_list_previews_stay_per_conversation(client):
+    # The list endpoint batch-fetches members and previews across all
+    # conversations; make sure each row gets its own, not a neighbour's.
+    alice = signup(client, display_name="Alice")
+    bob = signup(client, display_name="Bob")
+    carol = signup(client, display_name="Carol")
+
+    dm = client.post(
+        "/conversations/dm", json={"other_user_id": bob["user"]["id"]}, headers=auth_headers(alice)
+    ).json()
+    group = client.post(
+        "/conversations/group",
+        json={"name": "Trio", "member_ids": [bob["user"]["id"], carol["user"]["id"]]},
+        headers=auth_headers(alice),
+    ).json()
+    empty_dm = client.post(
+        "/conversations/dm", json={"other_user_id": carol["user"]["id"]}, headers=auth_headers(alice)
+    ).json()
+
+    client.post(f"/conversations/{dm['id']}/messages", json={"body": "dm latest"}, headers=auth_headers(bob))
+    client.post(f"/conversations/{group['id']}/messages", json={"body": "group latest"}, headers=auth_headers(carol))
+
+    resp = client.get("/conversations", headers=auth_headers(alice))
+    assert resp.status_code == 200
+    by_id = {c["id"]: c for c in resp.json()}
+    assert len(by_id) == 3
+
+    assert by_id[dm["id"]]["last_message"]["body"] == "dm latest"
+    assert by_id[group["id"]]["last_message"]["body"] == "group latest"
+    assert by_id[empty_dm["id"]]["last_message"] is None
+
+    assert {m["user_id"] for m in by_id[dm["id"]]["members"]} == {alice["user"]["id"], bob["user"]["id"]}
+    assert {m["user_id"] for m in by_id[group["id"]]["members"]} == {
+        alice["user"]["id"],
+        bob["user"]["id"],
+        carol["user"]["id"],
+    }
