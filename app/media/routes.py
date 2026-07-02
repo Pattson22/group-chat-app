@@ -55,4 +55,15 @@ async def download_media(media: Media = Depends(get_media_for_user)):
         data = await storage.read(media.storage_key)
     except FileNotFoundError:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Media not found")
-    return Response(content=data, media_type=media.content_type)
+    return Response(
+        content=data,
+        media_type=media.content_type,
+        headers={
+            # A media id's content never changes, so clients can cache it
+            # forever; private because access is per-user authorized.
+            "Cache-Control": "private, max-age=31536000, immutable",
+            # The stored content type is client-declared at upload; stop
+            # browsers from second-guessing it into something executable.
+            "X-Content-Type-Options": "nosniff",
+        },
+    )

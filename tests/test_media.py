@@ -25,6 +25,10 @@ def test_upload_and_download_own_media(client):
     resp = client.get(f"/media/{media['id']}", headers=auth_headers(alice))
     assert resp.status_code == 200
     assert resp.content == PNG_BYTES
+    # Media is immutable per id, so responses must be long-cacheable and
+    # must not invite content-type sniffing.
+    assert "immutable" in resp.headers["cache-control"]
+    assert resp.headers["x-content-type-options"] == "nosniff"
 
 
 def test_reject_unsupported_content_type(client):
